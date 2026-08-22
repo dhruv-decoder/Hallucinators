@@ -66,7 +66,7 @@ mechanism. The risk is being long on narrative and short on proof — this score
 | # | Criterion (source) | Wt | Design | Built | Notes / what "5" needs |
 |---|---|---:|:--:|:--:|---|
 | 1 | **Problem understanding & fit** to ControlPlane brief (A1–A7) | 6 | 5 | 3 | Demo handles perf/cost/responsibility live. "5" = a two-axis-at-once case (A2) shown explicitly. |
-| 2 | **Detection breadth & depth** (B: heuristics, anomaly, judge, retrieval, PII) | 9 | 4 | 2 | T0 heuristics for all axes run. Need model-based T1/T2 (HHEM/GLiNER/judge) + measured P/R. |
+| 2 | **Detection breadth & depth** (B: heuristics, anomaly, judge, retrieval, PII) | 9 | 4 | 3 | T0 heuristics for all axes + a real NER PII model (Presidio) that beats the regex. Still need groundedness model (HHEM) + measured P/R. |
 | 3 | **Decision logic** (confidence scoring, tiered allow/edit/flag/block, human-in-loop) | 9 | 5 | 4 | VoI stopping rule + calibrated tiers + escalate/block all firing in the demo. "5" = AUTO_REPAIR wired. |
 | 4 | **Architecture** (placement, inline, parallel-for-latency) | 6 | 4 | 2 | Engine built; inline proxy + parallel async are P2's next. "5" = measured p50/p95 added latency. |
 | 5 | **Governance** (policy by use-case/geo/risk, audit trail) | 6 | 4 | 2 | PolicyProfile + hash-chained receipts built; hot-reload + multi-profile pending (P2). |

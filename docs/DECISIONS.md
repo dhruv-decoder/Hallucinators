@@ -92,6 +92,17 @@ tips marginal checks from skip to run, then decays. Scaling VoI (rather than cos
 economic comparison intact. A PID/bandit controller can replace the P-controller later without touching
 the engine seam.
 
+## ADR-0014 — First real model detector is NER PII (Presidio + spaCy), optional and T0
+**Context.** We need at least one genuinely model-backed detector to answer "is this just heuristics?" and
+to catch free-text PII (names, locations) the regex misses. A torch-based groundedness model (HHEM) is
+~1-2 GB and too heavy to run reliably in every environment. **Decision.** Wire Presidio + spaCy
+(`en_core_web_sm`) as an optional PII detector behind the `[ml]` extra; run it at T0 because PII screening
+is a mandatory first-pass gate, accepting the tens-of-ms cost. Relax the core `numpy` pin to `>=2.4,<2.6`
+because spaCy currently requires `numpy<2.5`. **Consequences.** A real statistical model demonstrably
+catches leaks the heuristic forwards (verified in `run_ml_pii`), the core stays light (default install has
+no torch/spaCy), and tests skip cleanly when the extra is absent. Groundedness (HHEM/MiniCheck) remains the
+next model to wire.
+
 ## Known open issue — base-rate blind spot
 If all cheap T0 detectors are silent, an axis starts near p=0 and the VoI rule may skip paid checks, so a
 calm, contextless hallucination could slip through. Planned fix: a per-axis prior base rate plus cheap

@@ -109,12 +109,18 @@ def decide_check(
     detector_cost_usd: float,
     detector_latency_ms: float,
     lambda_latency: float,
+    scrutiny: float = 1.0,
 ) -> VoIDecision:
     """Apply the stopping rule to a single candidate check.
 
     Runs the check iff its value of information strictly exceeds its total (dollar + latency) cost.
+
+    ``scrutiny`` is a multiplier on the value of information supplied by the adaptive thermostat: above
+    1.0 the system buys more checks (it is in a risky regime), below 1.0 it relaxes. At the default 1.0
+    the decision is the plain VoI rule. The reported ``voi`` is the scrutiny-adjusted value that was
+    actually compared to the cost, so the trace stays self-consistent.
     """
-    voi = value_of_information(p_fail, cost_fail, cost_mitigate, informativeness)
+    voi = value_of_information(p_fail, cost_fail, cost_mitigate, informativeness) * scrutiny
     cost = check_cost(detector_cost_usd, detector_latency_ms, lambda_latency)
     run = voi > cost
     if run:

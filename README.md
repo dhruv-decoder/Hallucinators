@@ -38,6 +38,8 @@ when the check's expected reduction in loss beats its own cost and latency. See
   receipt (reference JSONL store; SQLite upgrade in progress).
 - **What-If / Replay simulator** (`controlplane/replay/`) — re-runs a workload under different oversight
   policies (and oversight-off) to show the residual-risk vs. cost trade-off and prove the P&L is self-funding.
+- **Adaptive Oversight Thermostat** (`controlplane/cascade/thermostat.py`) — a feedback controller that
+  raises verification thoroughness when recent risk spikes and relaxes it when traffic is calm.
 
 ## Run it
 
@@ -49,6 +51,53 @@ make whatif       # re-runs a workload under strict/balanced/lenient/off to show
 ```
 
 The demo needs no API keys or model downloads — the core engine and T0 heuristics run locally.
+
+### Run on Windows (VS Code)
+
+`make` is not installed on Windows by default, so run the commands directly. Everything else is
+cross-platform.
+
+**One-time setup**
+1. Install **Python 3.11 or newer** from [python.org](https://www.python.org/downloads/). On the first
+   installer screen, tick **"Add python.exe to PATH"**.
+2. Install **Git** from [git-scm.com](https://git-scm.com/download/win).
+3. Install **VS Code** and its Microsoft **Python** extension.
+
+**Get the code and run it**
+1. Open VS Code, then open a terminal (`Ctrl + ~`) and clone the repo:
+   ```powershell
+   git clone https://github.com/dhruv-decoder/Hallucinators.git
+   cd Hallucinators
+   ```
+   (The repo is private — sign in / authorise GitHub when prompted. You must be added as a collaborator.)
+2. Open the folder in VS Code: **File > Open Folder** → select `Hallucinators`.
+3. Create and activate a virtual environment in the **PowerShell** terminal:
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
+   If PowerShell blocks the activation script with an execution-policy error, run this once and then
+   activate again:
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+   ```
+   (Alternatively use the **Command Prompt** terminal and run `.venv\Scripts\activate.bat`.)
+4. Install the project:
+   ```powershell
+   python -m pip install --upgrade pip
+   pip install -e ".[dev]"
+   ```
+5. Run the tests and demos:
+   ```powershell
+   pytest
+   python -m controlplane.demo.run_demo
+   python -m controlplane.demo.run_whatif
+   ```
+
+**VS Code tips**
+- After creating `.venv`, press `Ctrl + Shift + P` → **Python: Select Interpreter** → choose the one in
+  `.venv`. New terminals then activate it automatically.
+- If `python` is not found, try `py -3` instead (e.g. `py -3 -m venv .venv`).
 
 ## Repository layout
 

@@ -114,7 +114,20 @@ previous requests — so a burst of risky traffic ramps scrutiny up over the nex
 once calm returns. At the default `scrutiny=1.0` the engine behaves exactly as the plain VoI rule, so the
 controller is strictly additive. Run it with `make thermostat`.
 
-## 11. Known limitations (stated honestly)
+## 11. Feedback loop (learning from overrides)
+
+Detection should improve as humans review flagged cases. When a reviewer overrides an escalation or block
+and states whether the response really was a failure on an axis, that verdict is ground truth for every
+detector that fired on that axis. The feedback loop
+([`controlplane/feedback/loop.py`](../controlplane/feedback/loop.py)) accumulates those
+`(detector_score, true_label)` pairs and refits each detector's calibrator (reusing
+`cascade/calibration.py`), which the engine then uses in place of the identity default. In the demo, 300
+reviews cut the overconfidence detector's calibration error from ~0.40 to ~0.01, and a confident-but-correct
+answer that was being escalated is downgraded — the over-flagging is corrected without touching any
+detector's code. Detectors with too little feedback keep their default calibration, so we never fit a curve
+from a handful of points. Run it with `python -m controlplane.demo.run_feedback`.
+
+## 12. Known limitations (stated honestly)
 
 - **Base-rate blind spot.** If every cheap T0 detector is silent (e.g. a calm, unhedged answer with no
   retrieved context), the axis probability starts near zero and the VoI rule may skip further checks. The

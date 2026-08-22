@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ControlPlane · The Tower</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111722; --panel2:#0d131c; --line:#1e2836; --ink:#e6edf3;
+    --muted:#8b98a9; --accent:#4cc3ff; --good:#39d98a; --warn:#ffcf5c; --bad:#ff6b6b;
+    --repair:#a78bfa; --escalate:#ffcf5c; --block:#ff6b6b; --pass:#39d98a; --annotate:#4cc3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#12203020,transparent),var(--bg);
+    color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif}
+  header{display:flex;align-items:center;gap:16px;padding:14px 22px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:#0a0e14e6;backdrop-filter:blur(8px);z-index:10}
+  header h1{font-size:16px;margin:0;letter-spacing:.3px;font-weight:650}
+  header h1 .dot{color:var(--accent)}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);
+    padding:5px 10px;border-radius:999px;color:var(--muted);font-size:12px}
+  .pill b{color:var(--ink);font-weight:600}
+  .grow{flex:1}
+  select,button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{background:var(--accent);color:#04121c;border-color:var(--accent);font-weight:650}
+  button.primary:hover{filter:brightness(1.1);color:#04121c}
+  main{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;padding:16px 22px;max-width:1500px;margin:0 auto}
+  .col{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:14px;padding:16px}
+  .card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:650}
+  .pnl-net{font-size:40px;font-weight:750;letter-spacing:-1px;line-height:1}
+  .pnl-net.good{color:var(--good)} .pnl-net.bad{color:var(--bad)}
+  .pnl-sub{color:var(--muted);margin-top:6px;font-size:13px}
+  .pnl-row{display:flex;gap:20px;margin-top:12px}
+  .metric{flex:1} .metric .v{font-size:19px;font-weight:650} .metric .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  canvas{width:100%;display:block}
+  .badge{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.5px}
+  .b-pass{background:#0f2a1e;color:var(--pass)} .b-annotate{background:#0e2635;color:var(--annotate)}
+  .b-auto_repair{background:#1e1633;color:var(--repair)} .b-escalate{background:#2c2410;color:var(--escalate)}
+  .b-block{background:#2c1416;color:var(--block)}
+  .feed{display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto}
+  .row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;cursor:pointer;transition:.12s}
+  .row:hover{border-color:var(--accent);transform:translateX(2px)}
+  .row .rid{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .row .txt{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+  .row .net{font-size:12px;font-family:ui-monospace,Menlo,monospace}
+  .net.neg{color:var(--good)} .net.pos{color:var(--muted)}
+  .quad-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:11px}
+  .quad-legend span{display:inline-flex;align-items:center;gap:5px}
+  .swatch{width:9px;height:9px;border-radius:50%}
+  .gauge-wrap{display:flex;align-items:center;gap:14px}
+  .therm{font-size:26px;font-weight:750}
+  table.replay{width:100%;border-collapse:collapse;font-size:12px}
+  table.replay th,table.replay td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  table.replay th{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  table.replay td.num{font-family:ui-monospace,Menlo,monospace;text-align:right}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(560px,94vw);background:var(--panel);
+    border-left:1px solid var(--line);transform:translateX(100%);transition:.25s;z-index:20;overflow:auto;padding:20px}
+  .drawer.open{transform:translateX(0)}
+  .drawer h3{margin:0 0 4px;font-size:15px} .drawer .close{position:absolute;top:16px;right:16px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:10px 0;font-size:13px}
+  .kv .k{color:var(--muted)}
+  .trace{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:10px;overflow:auto;white-space:pre;color:#b9c6d6}
+  .axis-bar{height:7px;border-radius:4px;background:#1a2432;overflow:hidden;margin-top:3px}
+  .axis-bar>div{height:100%}
+  .hash{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--muted);word-break:break-all}
+  .hint{color:var(--muted);font-size:12px} .overlay{position:fixed;inset:0;background:#0006;opacity:0;pointer-events:none;transition:.2s;z-index:15}
+  .overlay.open{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>ControlPlane <span class="dot">·</span> The Tower</h1>
+  <span class="pill">requests <b id="p-req">0</b></span>
+  <span class="pill">cleared @T0 <b id="p-t0">—</b></span>
+  <span class="pill">added latency <b id="p-lat">—</b></span>
+  <span class="pill" id="p-chain">chain <b>—</b></span>
+  <span class="grow"></span>
+  <select id="policy" title="Active use-case policy"></select>
+  <button id="btn-replay">Run What-If replay</button>
+  <button class="primary" id="btn-sim">▶ Send demo traffic</button>
+</header>
+
+<main>
+  <div class="col">
+    <div class="card">
+      <h2>Oversight P&amp;L — cost saved vs safety spend</h2>
+      <div id="pnl-net" class="pnl-net good">$0.000000</div>
+      <div class="pnl-sub" id="pnl-sub">net per window · negative = self-funding (savings pay for safety)</div>
+      <div class="pnl-row">
+        <div class="metric"><div class="v" id="m-saved" style="color:var(--good)">$0</div><div class="k">cost saved</div></div>
+        <div class="metric"><div class="v" id="m-spend" style="color:var(--warn)">$0</div><div class="k">safety spend</div></div>
+        <div class="metric"><div class="v" id="m-scrut">1.00×</div><div class="k">thermostat scrutiny</div></div>
+      </div>
+      <canvas id="spark" height="70" style="margin-top:14px"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Confidently-wrong quadrant — the danger zone we exist to catch</h2>
+      <canvas id="quad" height="300"></canvas>
+      <div class="quad-legend">
+        <span><i class="swatch" style="background:var(--pass)"></i>pass</span>
+        <span><i class="swatch" style="background:var(--annotate)"></i>annotate</span>
+        <span><i class="swatch" style="background:var(--repair)"></i>auto-repair</span>
+        <span><i class="swatch" style="background:var(--escalate)"></i>escalate</span>
+        <span><i class="swatch" style="background:var(--block)"></i>block</span>
+        <span style="margin-left:auto">x → estimated correctness · y → model confidence</span>
+      </div>
+    </div>
+
+    <div class="card" id="replay-card" style="display:none">
+      <h2>What-If replay — safer AND cheaper, proven not asserted</h2>
+      <table class="replay"><thead><tr>
+        <th>scenario</th><th class="num">residual risk</th><th class="num">risk ↓</th>
+        <th class="num">net $</th><th class="num">escalations</th>
+      </tr></thead><tbody id="replay-body"></tbody></table>
+      <div class="hint" style="margin-top:8px">Same workload, varying risk appetite. Oversight-off carries full risk at zero savings; every ControlPlane policy is net-negative.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <h2>Live oversight feed — one verdict across three axes</h2>
+      <div class="feed" id="feed"><div class="hint">No traffic yet. Hit <b>Send demo traffic</b> — or point any OpenAI client at <code>/v1</code>.</div></div>
+    </div>
+    <div class="card">
+      <h2>Adaptive oversight thermostat</h2>
+      <div class="gauge-wrap">
+        <canvas id="gauge" width="120" height="120" style="width:120px;flex:none"></canvas>
+        <div>
+          <div class="therm" id="therm-val">1.00×</div>
+          <div class="hint" id="therm-txt">Scrutiny scales with recent risk. A burst of risky traffic ramps it up; calm relaxes it, so the safe majority is never slowed.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="overlay" id="overlay"></div>
+<div class="drawer" id="drawer">
+  <button class="close" onclick="closeDrawer()">✕ close</button>
+  <div id="drawer-body"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const ACTION_COLOR = {pass:'#39d98a',annotate:'#4cc3ff',auto_repair:'#a78bfa',escalate:'#ffcf5c',block:'#ff6b6b'};
+const AXIS_COLOR = {performance:'#4cc3ff',responsibility:'#ff6b6b',cost:'#39d98a'};
+let receipts = [];           // newest-first
+let netSeries = [];          // cumulative net for the sparkline
+const byId = {};
+
+function fmt(n){ const s = n<0?'-':''; return s+'$'+Math.abs(n).toFixed(6); }
+function worstAxis(r){ let a=null,p=-1; for(const [ax,o] of Object.entries(r.per_axis||{})){ if(o.p_fail>p){p=o.p_fail;a=ax;} } return [a,Math.max(p,0)]; }
+
+// ---- rendering ----------------------------------------------------------------
+function renderSummary(s){
+  $('#p-req').textContent = s.requests;
+  $('#p-t0').textContent = s.cleared_at_t0_pct + '%';
+  $('#p-chain').innerHTML = 'chain <b style="color:'+(s.chain_valid?'var(--good)':'var(--bad)')+'">'+(s.chain_valid?'✓ valid':'✗ broken')+'</b>';
+  const net = s.net_usd;
+  const el = $('#pnl-net'); el.textContent = fmt(net); el.className = 'pnl-net '+(net<0?'good':'bad');
+  $('#m-saved').textContent = '$'+s.cost_saved_usd.toFixed(5);
+  $('#m-spend').textContent = '$'+s.safety_spend_usd.toFixed(5);
+  $('#m-scrut').textContent = s.scrutiny.toFixed(2)+'×';
+  $('#pnl-sub').textContent = s.self_funding ? 'net negative — oversight is paying for itself' : 'net positive — safety spend exceeds savings this window';
+  drawGauge(s.scrutiny); $('#therm-val').textContent = s.scrutiny.toFixed(2)+'×';
+  // policy dropdown
+  const sel = $('#policy');
+  if(sel.options.length===0 && s.policies){
+    for(const [k,v] of Object.entries(s.policies)){ const o=document.createElement('option'); o.value=k; o.textContent=v; sel.appendChild(o); }
+    sel.onchange = ()=> fetch('/v1/oversight/policy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({policy:sel.value})});
+  }
+}
+
+function addReceipt(r){
+  if(byId[r.request_id]) return; byId[r.request_id]=r;
+  receipts.unshift(r);
+  netSeries.push((netSeries.length?netSeries[netSeries.length-1]:0) + r.pnl.net_usd);
+  // latency from receipt trace (sum of ran signal latencies)
+  renderFeed(); drawSpark(); drawQuad();
+  const lat = receipts.slice(0,20).map(x => (x.signals||[]).filter(s=>s).reduce((a,s)=>a+ (s.latency_ms||0),0));
+  const avg = lat.length? (lat.reduce((a,b)=>a+b,0)/lat.length):0; $('#p-lat').textContent = avg.toFixed(1)+' ms';
+}
+
+function renderFeed(){
+  const feed = $('#feed'); feed.innerHTML='';
+  for(const r of receipts.slice(0,40)){
+    const [ax,p]=worstAxis(r);
+    const row=document.createElement('div'); row.className='row'; row.onclick=()=>openDrawer(r);
+    row.innerHTML = `<span class="badge b-${r.action}">${r.action.replace('_','-')}</span>`+
+      `<div style="min-width:0"><div class="txt">${(r.use_case||'').replace('_',' ')} · ${ax||'—'} p=${p.toFixed(2)}</div>`+
+      `<div class="rid">${r.request_id} · ${r.stopping_reason||''}</div></div>`+
+      `<div class="net ${r.pnl.net_usd<0?'neg':'pos'}">${fmt(r.pnl.net_usd)}</div>`;
+    feed.appendChild(row);
+  }
+}
+
+// cumulative net sparkline
+function drawSpark(){
+  const c=$('#spark'), ctx=c.getContext('2d'), W=c.width=c.clientWidth*devicePixelRatio, H=c.height=70*devicePixelRatio;
+  ctx.clearRect(0,0,W,H); if(netSeries.length<2) return;
+  const min=Math.min(0,...netSeries), max=Math.max(0,...netSeries), span=(max-min)||1;
+  const x=i=>i/(netSeries.length-1)*W, y=v=>H-(v-min)/span*H;
+  // zero line
+  ctx.strokeStyle='#22303f'; ctx.lineWidth=devicePixelRatio; ctx.beginPath(); ctx.moveTo(0,y(0)); ctx.lineTo(W,y(0)); ctx.stroke();
+  // area
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#39d98a55'); g.addColorStop(1,'#39d98a00');
+  ctx.beginPath(); ctx.moveTo(0,y(0)); netSeries.forEach((v,i)=>ctx.lineTo(x(i),y(v))); ctx.lineTo(W,y(0)); ctx.closePath(); ctx.fillStyle=g; ctx.fill();
+  ctx.beginPath(); netSeries.forEach((v,i)=> i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v))); ctx.strokeStyle='#39d98a'; ctx.lineWidth=2*devicePixelRatio; ctx.stroke();
+}
+
+// confidently-wrong quadrant
+function drawQuad(){
+  const c=$('#quad'), ctx=c.getContext('2d'), W=c.width=c.clientWidth*devicePixelRatio, H=c.height=300*devicePixelRatio;
+  ctx.clearRect(0,0,W,H); const pad=28*devicePixelRatio;
+  // danger zone: low correctness (left), high confidence (top)
+  ctx.fillStyle='#ff6b6b12'; ctx.fillRect(pad,pad,(W-2*pad)/2,(H-2*pad)/2);
+  ctx.strokeStyle='#22303f'; ctx.lineWidth=devicePixelRatio;
+  ctx.strokeRect(pad,pad,W-2*pad,H-2*pad);
+  ctx.beginPath(); ctx.moveTo(W/2,pad); ctx.lineTo(W/2,H-pad); ctx.moveTo(pad,H/2); ctx.lineTo(W-pad,H/2); ctx.strokeStyle='#18222f'; ctx.stroke();
+  ctx.fillStyle='#ff6b6b'; ctx.font=(11*devicePixelRatio)+'px sans-serif'; ctx.fillText('⚠ confidently wrong',pad+8*devicePixelRatio,pad+16*devicePixelRatio);
+  ctx.fillStyle='#8b98a9'; ctx.fillText('correct & confident',W-pad-140*devicePixelRatio,H-pad-8*devicePixelRatio);
+  const X=v=>pad+v*(W-2*pad), Y=conf=>H-pad-conf*(H-2*pad);
+  for(const r of receipts.slice(0,120)){
+    const perf=(r.per_axis&&r.per_axis.performance)?r.per_axis.performance.p_fail:0;
+    const correctness=1-perf;
+    const oc=(r.signals||[]).find(s=>s.name==='overconfidence');
+    const conf = oc? oc.score : (1-perf*0.5); // fall back to a confidence proxy
+    ctx.beginPath(); ctx.arc(X(correctness),Y(conf),4.5*devicePixelRatio,0,7); ctx.fillStyle=ACTION_COLOR[r.action]||'#888'; ctx.globalAlpha=.85; ctx.fill(); ctx.globalAlpha=1;
+  }
+}
+
+// thermostat gauge (semicircle)
+function drawGauge(scrutiny){
+  const c=$('#gauge'), ctx=c.getContext('2d'), W=c.width, H=c.height; ctx.clearRect(0,0,W,H);
+  const cx=W/2, cy=H*0.72, R=44, lo=0.5, hi=3.0; const t=Math.min(Math.max((scrutiny-lo)/(hi-lo),0),1);
+  ctx.lineWidth=11; ctx.lineCap='round';
+  ctx.beginPath(); ctx.arc(cx,cy,R,Math.PI,2*Math.PI); ctx.strokeStyle='#1a2432'; ctx.stroke();
+  const col = scrutiny>1.6?'#ff6b6b':(scrutiny>1.05?'#ffcf5c':'#39d98a');
+  ctx.beginPath(); ctx.arc(cx,cy,R,Math.PI,Math.PI+t*Math.PI); ctx.strokeStyle=col; ctx.stroke();
+  ctx.fillStyle=col; ctx.font='bold 15px sans-serif'; ctx.textAlign='center'; ctx.fillText(scrutiny.toFixed(2)+'×',cx,cy-6);
+}
+
+// ---- receipt drawer -----------------------------------------------------------
+function openDrawer(r){
+  const b=$('#drawer-body'); const axes=Object.entries(r.per_axis||{});
+  let axHtml='';
+  for(const [ax,o] of axes){
+    axHtml += `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between"><span>${ax}</span><b>p_fail ${o.p_fail.toFixed(3)}</b></div>`+
+      `<div class="axis-bar"><div style="width:${(o.p_fail*100).toFixed(0)}%;background:${AXIS_COLOR[ax]}"></div></div></div>`;
+  }
+  const traceRows=(r.trace||[]).filter(s=>s.tier>0).map(s=>
+    `${s.ran?'RAN ':'SKIP'} T${s.tier} ${s.detector.padEnd(22)} voi=${(s.voi||0).toFixed(5)} vs cost=${(s.check_cost||0).toFixed(5)}  (${s.reason})`).join('\n') || '(all resolved at T0 — no higher-tier check was worth its cost)';
+  const opps=(r.cost_opportunities||[]).filter(o=>o.recommendation!=='none').map(o=>`${o.recommendation} via ${o.name} → saved $${(o.estimated_savings_usd||0).toFixed(5)}`).join('<br>')||'—';
+  b.innerHTML = `<h3>${r.request_id} · <span class="badge b-${r.action}">${r.action.replace('_','-')}</span></h3>`+
+    `<div class="hint">${r.use_case} · policy ${r.policy_id}</div>`+
+    `<div class="kv"><span class="k">stopping reason</span><span>${r.stopping_reason||'—'}</span>`+
+    `<span class="k">expected loss</span><span>${(r.expected_loss_before||0).toFixed(4)} → ${(r.expected_loss_after||0).toFixed(4)}</span>`+
+    `<span class="k">P&amp;L</span><span>saved $${r.pnl.cost_saved_usd.toFixed(5)} · spend $${r.pnl.safety_spend_usd.toFixed(5)} · <b class="${r.pnl.net_usd<0?'net neg':'net pos'}">net ${fmt(r.pnl.net_usd)}</b></span></div>`+
+    `<h2 style="margin-top:16px">Per-axis verdict</h2>${axHtml}`+
+    `<h2 style="margin-top:16px">Value-of-information trace</h2><div class="trace">${traceRows}</div>`+
+    `<h2 style="margin-top:16px">Cost opportunities</h2><div class="hint">${opps}</div>`+
+    (r.repaired_output?`<h2 style="margin-top:16px">Delivered to user</h2><div class="trace" style="white-space:pre-wrap">${escapeHtml(r.repaired_output)}</div>`:'')+
+    `<h2 style="margin-top:16px">Tamper-evident chain</h2><div class="hash">self ${r.hash_self}<br>prev ${r.hash_prev||'genesis'}</div>`;
+  $('#drawer').classList.add('open'); $('#overlay').classList.add('open');
+}
+function closeDrawer(){ $('#drawer').classList.remove('open'); $('#overlay').classList.remove('open'); }
+$('#overlay').onclick=closeDrawer;
+function escapeHtml(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// ---- actions ------------------------------------------------------------------
+$('#btn-sim').onclick = async ()=>{ $('#btn-sim').disabled=true; $('#btn-sim').textContent='running…';
+  await fetch('/v1/oversight/simulate',{method:'POST'}); $('#btn-sim').disabled=false; $('#btn-sim').textContent='▶ Send demo traffic'; };
+$('#btn-replay').onclick = async ()=>{
+  const data = await (await fetch('/v1/oversight/replay',{method:'POST'})).json();
+  const tb=$('#replay-body'); tb.innerHTML='';
+  for(const s of data.scenarios){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${s.name}${s.self_funding?' <span class="badge b-pass">self-funding</span>':''}</td>`+
+      `<td class="num">${s.residual_risk.toFixed(4)}</td><td class="num">${s.risk_reduction_pct.toFixed(0)}%</td>`+
+      `<td class="num" style="color:${s.net_usd<0?'var(--good)':'var(--muted)'}">${fmt(s.net_usd)}</td>`+
+      `<td class="num">${(s.escalation_rate*100).toFixed(0)}%</td>`;
+    tb.appendChild(tr);
+  }
+  $('#replay-card').style.display='block';
+};
+
+// ---- live stream --------------------------------------------------------------
+function connect(){
+  const es = new EventSource('/v1/oversight/stream');
+  es.onmessage = e=>{ if(e.data.startsWith(':')) return; const m=JSON.parse(e.data);
+    if(m.type==='receipt') addReceipt(m.receipt); else if(m.type==='summary') renderSummary(m.summary); };
+  es.onerror = ()=>{ es.close(); setTimeout(connect,2000); };
+}
+fetch('/v1/oversight/summary').then(r=>r.json()).then(renderSummary);
+fetch('/v1/oversight/receipts?limit=50').then(r=>r.json()).then(d=>{ d.receipts.slice().reverse().forEach(addReceipt); });
+connect();
+window.addEventListener('resize',()=>{drawSpark();drawQuad();});
+</script>
+</body>
+</html>

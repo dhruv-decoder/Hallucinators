@@ -103,6 +103,16 @@ catches leaks the heuristic forwards (verified in `run_ml_pii`), the core stays 
 no torch/spaCy), and tests skip cleanly when the extra is absent. Groundedness (HHEM/MiniCheck) remains the
 next model to wire.
 
+## ADR-0015 — The feedback loop refits calibrators from human overrides
+**Context.** The brief asks that flagged/overridden cases improve detection over time, and we need this to
+be honest rather than a black box. **Decision.** Treat a human's per-axis verdict on a flagged decision as
+ground truth for every detector that fired on that axis; accumulate `(score, label)` pairs and refit each
+detector's calibrator (Platt by default) once it has enough samples; hand the refit calibrators to the
+engine. Reuse the existing calibration code rather than a new learner. **Consequences.** Learning is
+explainable (the same reliability curve, now fitted from real reviews) and directly attacks over/under-
+flagging; detectors with sparse feedback keep their default calibration. Only calibration is learned for
+now, not detector internals or thresholds — a deliberate, safe first step.
+
 ## Known open issue — base-rate blind spot
 If all cheap T0 detectors are silent, an axis starts near p=0 and the VoI rule may skip paid checks, so a
 calm, contextless hallucination could slip through. Planned fix: a per-axis prior base rate plus cheap

@@ -1,0 +1,10 @@
+{
+  "model": "controlplane-mock",
+  "stream": true,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Tell me a short joke"
+    }
+  ]
+}

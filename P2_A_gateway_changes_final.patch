@@ -1,0 +1,637 @@
+diff --git a/.env.example b/.env.example
+--- a/.env.example
++++ b/.env.example
+@@ -13,3 +13,12 @@
+ # --- Recorder ---
+ # Where the flight recorder writes its append-only log (reference store; P2 upgrades to SQLite).
+ CONTROLPLANE_RECORDER_PATH=recorder_log.jsonl
++
++# ControlPlane P2 proxy
++# 'mock' requires no external model. Use 'upstream' for any OpenAI-compatible API.
++CONTROLPLANE_BACKEND=mock
++CONTROLPLANE_UPSTREAM_BASE_URL=http://localhost:8001/v1
++CONTROLPLANE_API_KEY=
++CONTROLPLANE_HOST=0.0.0.0
++CONTROLPLANE_PORT=8000
++CONTROLPLANE_REQUEST_TIMEOUT_S=60
+diff --git a/Makefile b/Makefile
+--- a/Makefile
++++ b/Makefile
+@@ -1,11 +1,12 @@
+ # Blessed entry points. Everything a stranger needs to run the project lives here.
+ 
+-.PHONY: help install test demo whatif thermostat lint clean
++.PHONY: help install test demo serve whatif thermostat eval lint clean
+ 
+ help:
+ 	@echo "make install    - create .venv and install the core engine + dev tools"
+ 	@echo "make test       - run the unit tests"
+ 	@echo "make demo       - run the end-to-end oversight demo on sample requests"
++	@echo "make serve      - start the OpenAI-compatible ControlPlane proxy"
+ 	@echo "make whatif     - run the What-If/Replay comparison across oversight policies"
+ 	@echo "make thermostat - run the adaptive thermostat demo (calm -> risky burst -> calm)"
+ 	@echo "make eval       - run the evaluation harness (P/R/F1/FPR/FNR, baselines, cost, calibration)"
+@@ -19,6 +20,9 @@
+ 
+ test:
+ 	pytest
++
++serve:
++	python -m controlplane.proxy
+ 
+ demo:
+ 	python -m controlplane.demo.run_demo
+diff --git a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,59 +1,60 @@
+-[build-system]
+-requires = ["hatchling"]
+-build-backend = "hatchling.build"
+-
+-[project]
+-name = "controlplane"
+-version = "0.1.0"
+-description = "Real-time AI oversight as a value-of-information decision under a latency budget."
+-readme = "README.md"
+-requires-python = ">=3.11"
+-license = { text = "MIT" }
+-authors = [
+-  { name = "Team Hallucinators" },
+-]
+-
+-# Core runtime dependencies for the decision engine (kept light so the core runs
+-# without downloading any ML models). Pinned to the versions we develop against.
+-dependencies = [
+-  "pydantic==2.13.4",
+-  # Range rather than an exact pin because the optional [ml] extra (spaCy) currently requires numpy<2.5.
+-  "numpy>=2.4,<2.6",
+-]
+-
+-[project.optional-dependencies]
+-# The gateway / proxy layer (owned by P2). Kept optional so the core engine can be
+-# installed and tested on its own.
+-serve = [
+-  "fastapi==0.141.1",
+-  "uvicorn==0.52.3",
+-  "litellm>=1.0",
+-]
+-# Optional model-backed detectors. Presidio + spaCy power the NER-based PII detector (realised today).
+-# After installing this extra, download the spaCy model once:
+-#   python -m spacy download en_core_web_sm
+-# Left with loose bounds; groundedness (HHEM/MiniCheck) and safety models are added as they are wired.
+-ml = [
+-  "presidio-analyzer>=2.2",
+-  "spacy>=3.7,<4",
+-]
+-# Developer tooling.
+-dev = [
+-  "pytest==8.3.4",
+-  "ruff==0.8.4",
+-]
+-
+-[tool.hatch.build.targets.wheel]
+-packages = ["controlplane"]
+-
+-[tool.pytest.ini_options]
+-testpaths = ["tests"]
+-addopts = "-q"
+-
+-[tool.ruff]
+-line-length = 120
+-target-version = "py311"
+-
+-[tool.ruff.lint]
+-# Sensible defaults: pyflakes (F), pycodestyle (E,W), isort (I), bugbear (B), pyupgrade (UP).
+-select = ["E", "W", "F", "I", "B", "UP"]
++[build-system]
++requires = ["hatchling"]
++build-backend = "hatchling.build"
++
++[project]
++name = "controlplane"
++version = "0.1.0"
++description = "Real-time AI oversight as a value-of-information decision under a latency budget."
++readme = "README.md"
++requires-python = ">=3.11"
++license = { text = "MIT" }
++authors = [
++  { name = "Team Hallucinators" },
++]
++
++# Core runtime dependencies for the decision engine (kept light so the core runs
++# without downloading any ML models). Pinned to the versions we develop against.
++dependencies = [
++  "pydantic==2.13.4",
++  # Range rather than an exact pin because the optional [ml] extra (spaCy) currently requires numpy<2.5.
++  "numpy>=2.4,<2.6",
++]
++
++[project.optional-dependencies]
++# The gateway / proxy layer (owned by P2). Kept optional so the core engine can be
++# installed and tested on its own.
++serve = [
++  "fastapi==0.141.1",
++  "uvicorn==0.52.3",
++  "litellm>=1.0",
++  "httpx>=0.28,<1",
++]
++# Optional model-backed detectors. Presidio + spaCy power the NER-based PII detector (realised today).
++# After installing this extra, download the spaCy model once:
++#   python -m spacy download en_core_web_sm
++# Left with loose bounds; groundedness (HHEM/MiniCheck) and safety models are added as they are wired.
++ml = [
++  "presidio-analyzer>=2.2",
++  "spacy>=3.7,<4",
++]
++# Developer tooling.
++dev = [
++  "pytest==8.3.4",
++  "ruff==0.8.4",
++]
++
++[tool.hatch.build.targets.wheel]
++packages = ["controlplane"]
++
++[tool.pytest.ini_options]
++testpaths = ["tests"]
++addopts = "-q"
++
++[tool.ruff]
++line-length = 120
++target-version = "py311"
++
++[tool.ruff.lint]
++# Sensible defaults: pyflakes (F), pycodestyle (E,W), isort (I), bugbear (B), pyupgrade (UP).
++select = ["E", "W", "F", "I", "B", "UP"]
+diff --git a/controlplane/proxy/__init__.py b/controlplane/proxy/__init__.py
+new file mode 100644
+--- /dev/null
++++ b/controlplane/proxy/__init__.py
+@@ -0,0 +1,10 @@
++"""OpenAI-compatible gateway for ControlPlane.
++
++The gateway is intentionally thin in this first slice: it owns HTTP transport and model
++backend selection, while the cascade/policy layers remain pluggable middleware around the
++backend call. This keeps the P2/P1 seam explicit.
++"""
++
++from controlplane.proxy.app import create_app
++
++__all__ = ["create_app"]
+diff --git a/controlplane/proxy/__main__.py b/controlplane/proxy/__main__.py
+new file mode 100644
+--- /dev/null
++++ b/controlplane/proxy/__main__.py
+@@ -0,0 +1,12 @@
++"""Run the ControlPlane proxy with ``python -m controlplane.proxy``."""
++
++from __future__ import annotations
++
++import uvicorn
++
++from controlplane.proxy.config import ProxySettings
++
++
++if __name__ == "__main__":
++    settings = ProxySettings.from_env()
++    uvicorn.run("controlplane.proxy.app:app", host=settings.host, port=settings.port, reload=False)
+diff --git a/controlplane/proxy/app.py b/controlplane/proxy/app.py
+new file mode 100644
+--- /dev/null
++++ b/controlplane/proxy/app.py
+@@ -0,0 +1,112 @@
++"""FastAPI application for the OpenAI-compatible ControlPlane proxy."""
++
++from __future__ import annotations
++
++from collections.abc import Mapping
++from contextlib import asynccontextmanager
++from typing import Any
++
++from fastapi import FastAPI, Header, HTTPException, Request
++from fastapi.responses import JSONResponse, StreamingResponse
++
++from controlplane.proxy.backend import HttpxOpenAIBackend, ModelBackend, build_backend
++from controlplane.proxy.config import ProxySettings
++from controlplane.proxy.streaming import iter_with_abort
++
++
++class ProxyState:
++    """Mutable application state kept separate from FastAPI route functions for testability."""
++
++    def __init__(self, settings: ProxySettings, backend: ModelBackend) -> None:
++        self.settings = settings
++        self.backend = backend
++
++
++@asynccontextmanager
++async def _lifespan(app: FastAPI):
++    try:
++        yield
++    finally:
++        backend = getattr(app.state, "controlplane", None)
++        if isinstance(backend, ProxyState) and isinstance(backend.backend, HttpxOpenAIBackend):
++            await backend.backend.aclose()
++
++
++def _incoming_headers(authorization: str | None) -> dict[str, str]:
++    return {"authorization": authorization} if authorization else {}
++
++
++def create_app(settings: ProxySettings | None = None, backend: ModelBackend | None = None) -> FastAPI:
++    """Create a ControlPlane proxy app.
++
++    ``settings`` and ``backend`` are injectable so tests can use the deterministic mock backend and
++    future integration tests can plug in a fake model without opening a network connection.
++    """
++    settings = settings or ProxySettings.from_env()
++    backend = backend or build_backend(settings)
++
++    app = FastAPI(
++        title="ControlPlane Proxy",
++        version="0.1.0",
++        lifespan=_lifespan,
++    )
++    app.state.controlplane = ProxyState(settings, backend)
++
++    @app.get("/healthz")
++    async def healthz() -> dict[str, Any]:
++        return {
++            "status": "ok",
++            "service": "controlplane-proxy",
++            "backend": settings.backend,
++        }
++
++    @app.get("/v1/models")
++    async def models() -> dict[str, Any]:
++        model = "controlplane-mock" if settings.backend == "mock" else settings.upstream_base_url
++        return {
++            "object": "list",
++            "data": [{"id": model, "object": "model", "owned_by": "controlplane"}],
++        }
++
++    @app.post("/v1/chat/completions")
++    async def chat_completions(
++        request: Request,
++        authorization: str | None = Header(default=None),
++    ):
++        try:
++            payload = await request.json()
++        except Exception as exc:  # pragma: no cover - FastAPI normally catches malformed JSON first.
++            raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
++
++        if not isinstance(payload, Mapping):
++            raise HTTPException(status_code=400, detail="Request body must be a JSON object")
++
++        messages = payload.get("messages")
++        if not isinstance(messages, list) or not messages:
++            raise HTTPException(status_code=422, detail="'messages' must be a non-empty list")
++
++        stream = bool(payload.get("stream", False))
++        incoming = _incoming_headers(authorization)
++
++        try:
++            if stream:
++                source = backend.stream(payload, incoming)
++                return StreamingResponse(
++                    iter_with_abort(source),
++                    media_type="text/event-stream",
++                    headers={
++                        "cache-control": "no-cache",
++                        "connection": "keep-alive",
++                    },
++                )
++
++            response = await backend.complete(payload, incoming)
++            return JSONResponse(content=response)
++        except Exception as exc:
++            # Keep upstream details out of the public response while retaining the original exception for logs.
++            raise HTTPException(status_code=502, detail=f"Model backend request failed: {exc}") from exc
++
++    return app
++
++
++app = create_app()
+diff --git a/controlplane/proxy/backend.py b/controlplane/proxy/backend.py
+new file mode 100644
+--- /dev/null
++++ b/controlplane/proxy/backend.py
+@@ -0,0 +1,173 @@
++"""Model backend implementations used by the ControlPlane gateway.
++
++The public contract is deliberately small. P2 controls transport; P1 can later attach the cascade
++around the backend without coupling detector code to FastAPI or HTTP details.
++"""
++
++from __future__ import annotations
++
++import json
++import time
++import uuid
++from collections.abc import AsyncIterator, Mapping
++from typing import Any, Protocol
++
++import httpx
++
++from controlplane.proxy.config import ProxySettings
++
++
++class ModelBackend(Protocol):
++    """Minimal backend protocol consumed by the proxy."""
++
++    async def complete(self, payload: Mapping[str, Any], headers: Mapping[str, str]) -> dict[str, Any]:
++        """Return one OpenAI-compatible completion response."""
++
++    async def stream(self, payload: Mapping[str, Any], headers: Mapping[str, str]) -> AsyncIterator[bytes]:
++        """Yield OpenAI-compatible SSE bytes for a streaming completion."""
++
++
++class MockBackend:
++    """Deterministic local backend for demos and tests.
++
++    It requires no API key or model download and makes the gateway independently runnable before a
++    real provider is connected. The response is intentionally simple; P1/P3 can replace the text
++    with richer demo scenarios later without changing proxy transport code.
++    """
++
++    model_name = "controlplane-mock"
++
++    @staticmethod
++    def _extract_prompt(payload: Mapping[str, Any]) -> str:
++        messages = payload.get("messages") or []
++        if not isinstance(messages, list):
++            return ""
++        for message in reversed(messages):
++            if isinstance(message, Mapping) and message.get("role") == "user":
++                content = message.get("content", "")
++                if isinstance(content, str):
++                    return content
++        return ""
++
++    @classmethod
++    def _response(cls, payload: Mapping[str, Any], content: str) -> dict[str, Any]:
++        model = str(payload.get("model") or cls.model_name)
++        completion_id = f"chatcmpl-mock-{uuid.uuid4().hex[:12]}"
++        prompt = cls._extract_prompt(payload)
++        prompt_tokens = max(1, len(prompt.split()))
++        completion_tokens = max(1, len(content.split()))
++        return {
++            "id": completion_id,
++            "object": "chat.completion",
++            "created": int(time.time()),
++            "model": model,
++            "choices": [
++                {
++                    "index": 0,
++                    "message": {"role": "assistant", "content": content},
++                    "finish_reason": "stop",
++                }
++            ],
++            "usage": {
++                "prompt_tokens": prompt_tokens,
++                "completion_tokens": completion_tokens,
++                "total_tokens": prompt_tokens + completion_tokens,
++            },
++        }
++
++    @classmethod
++    def _content(cls, payload: Mapping[str, Any]) -> str:
++        prompt = cls._extract_prompt(payload)
++        if not prompt:
++            return "Mock response from ControlPlane."
++        return f"Mock response from ControlPlane for: {prompt}"
++
++    async def complete(self, payload: Mapping[str, Any], headers: Mapping[str, str]) -> dict[str, Any]:
++        return self._response(payload, self._content(payload))
++
++    async def stream(self, payload: Mapping[str, Any], headers: Mapping[str, str]) -> AsyncIterator[bytes]:
++        response = self._response(payload, self._content(payload))
++        completion_id = response["id"]
++        created = response["created"]
++        model = response["model"]
++        content = response["choices"][0]["message"]["content"]
++
++        # Chunk at whitespace boundaries to mimic a simple token stream.
++        words = content.split()
++        for index, word in enumerate(words):
++            delta = {"role": "assistant"} if index == 0 else {}
++            delta["content"] = word + (" " if index < len(words) - 1 else "")
++            chunk = {
++                "id": completion_id,
++                "object": "chat.completion.chunk",
++                "created": created,
++                "model": model,
++                "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
++            }
++            yield f"data: {json.dumps(chunk, separators=(',', ':'))}\n\n".encode("utf-8")
++
++        final_chunk = {
++            "id": completion_id,
++            "object": "chat.completion.chunk",
++            "created": created,
++            "model": model,
++            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
++        }
++        yield f"data: {json.dumps(final_chunk, separators=(',', ':'))}\n\n".encode("utf-8")
++        yield b"data: [DONE]\n\n"
++
++
++class HttpxOpenAIBackend:
++    """Proxy an OpenAI-compatible upstream using ``httpx``.
++
++    LiteLLM can be introduced later as a provider abstraction, but this direct HTTP backend keeps
++    the first gateway slice dependency-light and works with any upstream that exposes the standard
++    ``/chat/completions`` contract.
++    """
++
++    def __init__(self, settings: ProxySettings) -> None:
++        self.settings = settings
++        self._client = httpx.AsyncClient(timeout=settings.request_timeout_s)
++
++    def _headers(self, incoming: Mapping[str, str]) -> dict[str, str]:
++        headers = {
++            "content-type": "application/json",
++            "accept": "application/json",
++        }
++        if self.settings.api_key:
++            headers["authorization"] = f"Bearer {self.settings.api_key}"
++        elif incoming.get("authorization"):
++            headers["authorization"] = incoming["authorization"]
++        return headers
++
++    @property
++    def url(self) -> str:
++        return f"{self.settings.upstream_base_url}/chat/completions"
++
++    async def complete(self, payload: Mapping[str, Any], headers: Mapping[str, str]) -> dict[str, Any]:
++        response = await self._client.post(self.url, json=dict(payload), headers=self._headers(headers))
++        response.raise_for_status()
++        return response.json()
++
++    async def stream(self, payload: Mapping[str, Any], headers: Mapping[str, str]) -> AsyncIterator[bytes]:
++        async with self._client.stream(
++            "POST",
++            self.url,
++            json=dict(payload),
++            headers=self._headers(headers),
++        ) as response:
++            response.raise_for_status()
++            async for chunk in response.aiter_bytes():
++                yield chunk
++
++    async def aclose(self) -> None:
++        await self._client.aclose()
++
++
++def build_backend(settings: ProxySettings) -> ModelBackend:
++    """Construct the configured backend, failing fast for unknown backend names."""
++    if settings.backend == "mock":
++        return MockBackend()
++    if settings.backend in {"openai", "upstream", "http"}:
++        return HttpxOpenAIBackend(settings)
++    raise ValueError(f"Unsupported CONTROLPLANE_BACKEND={settings.backend!r}; use 'mock' or 'upstream'.")
+diff --git a/controlplane/proxy/config.py b/controlplane/proxy/config.py
+new file mode 100644
+--- /dev/null
++++ b/controlplane/proxy/config.py
+@@ -0,0 +1,34 @@
++"""Configuration for the ControlPlane proxy.
++
++Environment variables are used so the same application can run locally, in Docker, or in CI
++without changing source code.
++"""
++
++from __future__ import annotations
++
++import os
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True, slots=True)
++class ProxySettings:
++    """Runtime settings for the HTTP gateway."""
++
++    backend: str = "mock"
++    upstream_base_url: str = "http://localhost:8001/v1"
++    api_key: str = ""
++    host: str = "0.0.0.0"
++    port: int = 8000
++    request_timeout_s: float = 60.0
++
++    @classmethod
++    def from_env(cls) -> "ProxySettings":
++        """Load settings from ``CONTROLPLANE_*`` environment variables."""
++        return cls(
++            backend=os.getenv("CONTROLPLANE_BACKEND", "mock").strip().lower(),
++            upstream_base_url=os.getenv("CONTROLPLANE_UPSTREAM_BASE_URL", "http://localhost:8001/v1").rstrip("/"),
++            api_key=os.getenv("CONTROLPLANE_API_KEY", ""),
++            host=os.getenv("CONTROLPLANE_HOST", "0.0.0.0"),
++            port=int(os.getenv("CONTROLPLANE_PORT", "8000")),
++            request_timeout_s=float(os.getenv("CONTROLPLANE_REQUEST_TIMEOUT_S", "60")),
++        )
+diff --git a/controlplane/proxy/streaming.py b/controlplane/proxy/streaming.py
+new file mode 100644
+--- /dev/null
++++ b/controlplane/proxy/streaming.py
+@@ -0,0 +1,30 @@
++"""Streaming primitives for the ControlPlane proxy.
++
++The first version is a pass-through wrapper with an optional chunk callback. P2 can later plug P1's
++mid-stream risk predicate into the same seam without rewriting the HTTP endpoint.
++"""
++
++from __future__ import annotations
++
++from collections.abc import AsyncIterator, Awaitable, Callable
++
++ChunkHook = Callable[[bytes], Awaitable[bool] | bool]
++
++
++async def iter_with_abort(source: AsyncIterator[bytes], hook: ChunkHook | None = None) -> AsyncIterator[bytes]:
++    """Forward chunks until the optional hook asks the stream to abort.
++
++    The hook returns ``True`` to continue and ``False`` to stop. A later implementation can have the
++    hook inspect reconstructed text, detector output, token counts, or remaining latency budget.
++    """
++    async for chunk in source:
++        if hook is None:
++            yield chunk
++            continue
++
++        decision = hook(chunk)
++        if hasattr(decision, "__await__"):
++            decision = await decision
++        if not decision:
++            return
++        yield chunk
+diff --git a/tests/test_proxy.py b/tests/test_proxy.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_proxy.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import json
++
++from fastapi.testclient import TestClient
++
++from controlplane.proxy.app import create_app
++from controlplane.proxy.config import ProxySettings
++
++
++def _client() -> TestClient:
++    settings = ProxySettings(backend="mock")
++    return TestClient(create_app(settings=settings))
++
++
++def test_health_and_models() -> None:
++    with _client() as client:
++        health = client.get("/healthz")
++        assert health.status_code == 200
++        assert health.json()["backend"] == "mock"
++
++        models = client.get("/v1/models")
++        assert models.status_code == 200
++        assert models.json()["object"] == "list"
++        assert models.json()["data"][0]["id"] == "controlplane-mock"
++
++
++def test_chat_completion_non_streaming_is_openai_shaped() -> None:
++    payload = {
++        "model": "controlplane-mock",
++        "messages": [{"role": "user", "content": "What are your support hours?"}],
++    }
++    with _client() as client:
++        response = client.post("/v1/chat/completions", json=payload)
++
++    assert response.status_code == 200
++    body = response.json()
++    assert body["object"] == "chat.completion"
++    assert body["choices"][0]["message"]["role"] == "assistant"
++    assert body["choices"][0]["message"]["content"]
++    assert body["usage"]["total_tokens"] >= 1
++
++
++def test_chat_completion_streaming_returns_sse() -> None:
++    payload = {
++        "model": "controlplane-mock",
++        "messages": [{"role": "user", "content": "Say hello"}],
++        "stream": True,
++    }
++    with _client() as client:
++        response = client.post("/v1/chat/completions", json=payload)
++
++    assert response.status_code == 200
++    assert response.headers["content-type"].startswith("text/event-stream")
++    lines = [line for line in response.text.splitlines() if line.startswith("data: ")]
++    assert lines
++    assert lines[-1] == "data: [DONE]"
++    first_payload = json.loads(lines[0][len("data: "):])
++    assert first_payload["object"] == "chat.completion.chunk"
++
++
++def test_messages_are_required() -> None:
++    with _client() as client:
++        response = client.post("/v1/chat/completions", json={"model": "controlplane-mock"})
++    assert response.status_code == 422

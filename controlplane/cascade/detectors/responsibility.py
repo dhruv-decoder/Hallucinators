@@ -50,6 +50,34 @@ def _luhn_ok(number: str) -> bool:
     return checksum % 10 == 0
 
 
+def redact_pii(text: str) -> tuple[str, dict[str, int]]:
+    """Replace detected PII spans with a typed placeholder, returning the redacted text and the counts.
+
+    Uses the same patterns (and Luhn check) as :class:`RegexPiiDetector`, so what the detector *flags* and
+    what the proxy *redacts* can never drift apart. A leaked card number becomes ``[REDACTED_CREDIT_CARD]``;
+    the raw value never survives into the forwarded response or the audit log. Returns ``(redacted, counts)``
+    where ``counts`` maps entity type -> number redacted.
+    """
+    counts: dict[str, int] = {}
+    redacted = text
+    # Redact most-specific / highest-severity spans first so a 16-digit card is not partially eaten by the
+    # 12-digit aadhaar pattern (the detector scores on the original text, so its order does not matter; the
+    # redactor mutates in place, so ordering does). Any pattern not listed here still runs afterwards.
+    order = ["credit_card", "us_ssn", "aadhaar", "email", "phone", "ip_address"]
+    ordered = [e for e in order if e in _PATTERNS] + [e for e in _PATTERNS if e not in order]
+    for entity in ordered:
+        pattern = _PATTERNS[entity]
+
+        def _sub(match: re.Match, entity: str = entity) -> str:
+            if entity == "credit_card" and not _luhn_ok(match.group(0)):
+                return match.group(0)  # not a real card number -> leave untouched
+            counts[entity] = counts.get(entity, 0) + 1
+            return f"[REDACTED_{entity.upper()}]"
+
+        redacted = pattern.sub(_sub, redacted)
+    return redacted, counts
+
+
 class RegexPiiDetector(Detector):
     """Detect personal / sensitive identifiers being emitted in a response.
 

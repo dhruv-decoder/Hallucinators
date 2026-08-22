@@ -1,11 +1,12 @@
 # Blessed entry points. Everything a stranger needs to run the project lives here.
 
-.PHONY: help install test demo lint clean
+.PHONY: help install test demo whatif lint clean
 
 help:
 	@echo "make install   - create .venv and install the core engine + dev tools"
 	@echo "make test      - run the unit tests"
 	@echo "make demo      - run the end-to-end oversight demo on sample requests"
+	@echo "make whatif    - run the What-If/Replay comparison across oversight policies"
 	@echo "make lint      - run ruff over the codebase"
 	@echo "make clean     - remove caches and build artifacts"
 
@@ -19,6 +20,9 @@ test:
 
 demo:
 	python -m controlplane.demo.run_demo
+
+whatif:
+	python -m controlplane.demo.run_whatif
 
 lint:
 	ruff check controlplane tests

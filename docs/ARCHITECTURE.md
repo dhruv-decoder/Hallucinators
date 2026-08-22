@@ -1,7 +1,8 @@
 # Architecture
 
 How the ControlPlane oversight engine works, end to end. This describes what is implemented today (the
-decision engine); the proxy, richer detectors, UI, and replay simulator are tracked in [PLAN.md](PLAN.md).
+decision engine and the What-If/Replay simulator); the proxy, richer detectors, and UI are tracked in
+[PLAN.md](PLAN.md).
 
 ## 1. The one idea
 
@@ -88,7 +89,19 @@ The tier loop is sequential by design — whether to climb depends on what cheap
 *within* a tier are independent and can run in parallel; that async concurrency is a latency optimisation
 owned by the proxy layer (P2) and does not change the decision logic.
 
-## 9. Known limitations (stated honestly)
+## 9. Replay / What-If (the proof engine)
+
+To show "safer AND cheaper" rather than assert it, the What-If simulator
+([`controlplane/replay/simulator.py`](../controlplane/replay/simulator.py)) re-runs a fixed workload under
+several policies and against an "oversight off" baseline. For each it reports **residual risk** (the
+model-estimated expected loss of answers that still reach users) and **net cost** (savings minus safety
+spend). Risk appetite (the action thresholds) varies while the risk model (`cost_fail`) is held constant,
+so total estimated risk is identical across scenarios and only what we *do* about it changes. The result is
+a monotonic dial: stricter policies cut residual risk further but escalate more to humans, and every
+ControlPlane policy is self-funding. These are ControlPlane's own risk estimates, not ground-truth failure
+rates; the labelled eval harness will measure the latter. Run it with `make whatif`.
+
+## 10. Known limitations (stated honestly)
 
 - **Base-rate blind spot.** If every cheap T0 detector is silent (e.g. a calm, unhedged answer with no
   retrieved context), the axis probability starts near zero and the VoI rule may skip further checks. The

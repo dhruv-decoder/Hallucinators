@@ -65,26 +65,27 @@ mechanism. The risk is being long on narrative and short on proof — this score
 
 | # | Criterion (source) | Wt | Design | Built | Notes / what "5" needs |
 |---|---|---:|:--:|:--:|---|
-| 1 | **Problem understanding & fit** to ControlPlane brief (A1–A7) | 6 | 5 | 0 | Strong. "5 built" = demo visibly handles each complexity, incl. a two-axis-at-once case (A2). |
-| 2 | **Detection breadth & depth** (B: heuristics, anomaly, judge, retrieval, PII) | 9 | 4 | 0 | All five approaches present in design. Need each *working* + measured P/R, not just wired. |
-| 3 | **Decision logic** (confidence scoring, tiered allow/edit/flag/block, human-in-loop) | 9 | 5 | 0 | Our strongest area by design (VoI + calibrated tiers + escalate). Must show the tiers firing live. |
-| 4 | **Architecture** (placement, inline, parallel-for-latency) | 6 | 4 | 0 | Inline gateway design is clear. "5" = measured p50/p95 added latency with parallel async proven. |
-| 5 | **Governance** (policy by use-case/geo/risk, audit trail) | 6 | 4 | 0 | Policy-as-config + hash-chained receipts designed. "5" = hot-swap a profile live + open the audit trail. |
-| 6 | **Feedback loops** (learning from overrides) | 4 | 2 | 0 | **Weak now** — only a P2/COULD sketch. Ship at least a real mechanism (override → recalibrate). |
-| 7 | **Metrics & monitoring** (FP/FN, trustworthiness to a skeptic, reproducible) | 9 | 4 | 0 | Harness + baselines designed. "5" = `make eval` regenerates every number; ECE + FP/FN reported. |
-| 8 | **Hard complexities handled** (no ground truth, risk overlap, over/under-flag, multi-turn/agents, evolving regs, API-only) | 10 | 4 | 0 | Broadest axis. Multi-turn/agent (A5) is thinnest — the agentic extension must at least demo once. |
-| 9 | **Innovation / novelty / differentiation** (VoI, self-funding, thermostat, replay, receipts) | 10 | 5 | 0 | Our edge. "5 built" = the P&L goes net-negative live and Replay proves the counterfactual. |
-| 10 | **Technical depth & AI proficiency** (for the AI discussion) | 8 | 4 | 0 | Design is deep. "5" = calibration math, SEP rationale, stopping-rule derivation explained by *each* member. |
-| 11 | **Tech-stack expertise & engineering quality** | 5 | 3 | 0 | "5" = clean, typed, tested, one-command reproducible; pinned deps; no dead code. |
-| 12 | **Practicality, scalability & measurable impact** (R2 explicit) | 7 | 3 | 0 | Scale is *simulated*. "5" = credible throughput/latency story + a clear ₹-impact-at-scale extrapolation, labeled as such. |
-| 13 | **Accenture theme: humans-in-the-lead, value at scale** | 4 | 4 | 0 | Escalate + override-learning + auditor receipts center the human. Say it out loud in the narrative. |
-| 14 | **Deliverable quality** (prototype runs, README, video, public repo) | 4 | 2 | 0 | Nothing shipped yet. "5" = stranger clones and runs in one command; video under time; repo clean. |
-| 15 | **Evidence integrity / credibility** (no fabricated claims) | 3 | 2 | 0 | **AT RISK** — three unverified 2026 incidents in R1. Until `EVIDENCE.md` clears them, cap this at 2. |
+| 1 | **Problem understanding & fit** to ControlPlane brief (A1–A7) | 6 | 5 | 3 | Demo handles perf/cost/responsibility live. "5" = a two-axis-at-once case (A2) shown explicitly. |
+| 2 | **Detection breadth & depth** (B: heuristics, anomaly, judge, retrieval, PII) | 9 | 4 | 2 | T0 heuristics for all axes run. Need model-based T1/T2 (HHEM/GLiNER/judge) + measured P/R. |
+| 3 | **Decision logic** (confidence scoring, tiered allow/edit/flag/block, human-in-loop) | 9 | 5 | 4 | VoI stopping rule + calibrated tiers + escalate/block all firing in the demo. "5" = AUTO_REPAIR wired. |
+| 4 | **Architecture** (placement, inline, parallel-for-latency) | 6 | 4 | 2 | Engine built; inline proxy + parallel async are P2's next. "5" = measured p50/p95 added latency. |
+| 5 | **Governance** (policy by use-case/geo/risk, audit trail) | 6 | 4 | 2 | PolicyProfile + hash-chained receipts built; hot-reload + multi-profile pending (P2). |
+| 6 | **Feedback loops** (learning from overrides) | 4 | 2 | 0 | Still the weakest. Ship override → recalibrate (P1 has calibration ready to reuse). |
+| 7 | **Metrics & monitoring** (FP/FN, trustworthiness to a skeptic, reproducible) | 9 | 4 | 1 | Calibration + ECE exist; the eval harness + baselines are the next big lift (P2 runner, P3 data). |
+| 8 | **Hard complexities handled** (no ground truth, risk overlap, over/under-flag, multi-turn/agents, evolving regs, API-only) | 10 | 4 | 3 | No-ground-truth (self-consistency), over/under-flag (VoI knobs), API-only (I/O) all coded. Multi-turn/agent pending. |
+| 9 | **Innovation / novelty / differentiation** (VoI, self-funding, thermostat, replay, receipts) | 10 | 5 | 4 | VoI + self-funding P&L + receipts run live and net negative. "5" = Replay + Thermostat shipped. |
+| 10 | **Technical depth & AI proficiency** (for the AI discussion) | 8 | 4 | 3 | Calibration + VoI implemented and tested from scratch. "5" = each member can defend it live. |
+| 11 | **Tech-stack expertise & engineering quality** | 5 | 3 | 4 | Typed, 20 tests green, lint-clean, one-command run, pinned deps, no dead code. |
+| 12 | **Practicality, scalability & measurable impact** (R2 explicit) | 7 | 3 | 2 | Demo runs; scale still simulated small. "5" = throughput/latency + a labelled at-scale ₹ extrapolation. |
+| 13 | **Accenture theme: humans-in-the-lead, value at scale** | 4 | 4 | 2 | Escalate action + auditor receipts built. "5" = override-learning loop + narrated in the video. |
+| 14 | **Deliverable quality** (prototype runs, README, video, public repo) | 4 | 2 | 2 | Runs from a clean clone (`make demo`), README + public repo done. Missing: demo video + eval numbers. |
+| 15 | **Evidence integrity / credibility** (no fabricated claims) | 3 | 2 | 2 | Three R1 incidents confirmed by the team; now must be *documented with links* in `EVIDENCE.md`, and the illustrative P&L prices replaced with sourced ones. "5" = every published number has a link or a `make eval` source. |
 
-**Weighted snapshot (today):** Design readiness ≈ **78%** of max; Built readiness ≈ **~2%** (plan stage).
-Interpretation: *the design is strong and broad; we have built essentially nothing yet; the single biggest
-credibility risk is evidence integrity (#15), and the two thinnest design areas are feedback loops (#6) and
-the multi-turn/agent complexity (#8/A5).* The 9-day job is to convert Design→Built without letting #15 slip.
+**Weighted snapshot (updated after the P1 engine build):** Design readiness ≈ **78%**; Built readiness ≈
+**~51%** of max (was ~2% at plan stage). Interpretation: *the decision engine — our differentiator — is
+built, tested, and demonstrably self-funding, which is the hard part. The remaining lift is proof and
+surface: the eval harness with real FP/FN numbers (#7), model-based detectors (#2), the proxy + UI so it
+looks like a product (#4, deliverables), the feedback loop (#6, still 0), and documenting evidence (#15).*
 
 *(Recompute the % whenever scores change: weighted mean of the column ÷ 5. Keep it honest — if it's not
 measured or not runnable, it's not a 4+.)*

@@ -70,6 +70,17 @@ synchronously; leave within-tier parallelism (asyncio) to the proxy layer. **Con
 easy to read, test, and explain; the parallel-for-latency optimisation is additive and does not change the
 stopping-rule logic.
 
+## ADR-0012 — What-If/Replay measures residual risk, holding the risk model constant
+**Context.** We need to *prove* "safer AND cheaper" on identical traffic, not assert it, without real
+ground-truth labels (those come later from the eval harness). **Decision.** Re-run a fixed workload under
+each policy and report residual risk (estimated expected loss of answers that still reach users, i.e. the
+pass/annotate ones) and net cost; model "oversight off" as forwarding everything with no savings; and vary
+only the risk *appetite* (action thresholds) while holding the risk model (`cost_fail`) constant so
+`total_risk` is identical across scenarios. **Consequences.** A clean, monotonic dial (stricter = safer but
+more escalations) and a defensible self-funding number, clearly labelled as ControlPlane's own estimates
+rather than measured failure rates. The labelled eval harness will later replace estimates with measured
+precision/recall.
+
 ## Known open issue — base-rate blind spot
 If all cheap T0 detectors are silent, an axis starts near p=0 and the VoI rule may skip paid checks, so a
 calm, contextless hallucination could slip through. Planned fix: a per-axis prior base rate plus cheap

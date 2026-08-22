@@ -11,10 +11,10 @@ One layer, three coupled risks, one verdict:
 - **Responsibility** — is it biased, unsafe, or leaking data?
 
 > Status: **early prototype.** The decision engine (the VoI cascade, calibration, expected-loss stopping
-> rule, P&L ledger, and hash-chained receipts) runs today and is unit-tested. The OpenAI-compatible proxy,
-> the richer detectors (HHEM/MiniCheck groundedness, GLiNER PII, safety models), the Control-Tower UI, and
-> the replay simulator are in progress. What is implemented vs. planned is stated honestly below and in
-> [docs/PLAN.md](docs/PLAN.md).
+> rule, P&L ledger, hash-chained receipts, and the What-If/Replay simulator) runs today and is unit-tested.
+> The OpenAI-compatible proxy, the richer detectors (HHEM/MiniCheck groundedness, GLiNER PII, safety
+> models), and the Control-Tower UI are in progress. What is implemented vs. planned is stated honestly
+> below and in [docs/PLAN.md](docs/PLAN.md).
 
 ## Why this is different
 
@@ -36,13 +36,16 @@ when the check's expected reduction in loss beats its own cost and latency. See
 - **Oversight P&L** (`controlplane/pnl/`) — cost saved vs. safety spend vs. net, per request.
 - **Flight recorder** (`controlplane/recorder/`) — every decision becomes a hash-chained, tamper-evident
   receipt (reference JSONL store; SQLite upgrade in progress).
+- **What-If / Replay simulator** (`controlplane/replay/`) — re-runs a workload under different oversight
+  policies (and oversight-off) to show the residual-risk vs. cost trade-off and prove the P&L is self-funding.
 
 ## Run it
 
 ```bash
 make install      # creates .venv and installs the core engine + dev tools
-make test         # unit tests for the VoI math, calibration, and P&L
+make test         # unit tests for the VoI math, calibration, P&L, and replay
 make demo         # runs sample requests through the cascade and prints receipts + a P&L summary
+make whatif       # re-runs a workload under strict/balanced/lenient/off to show the risk-vs-cost trade-off
 ```
 
 The demo needs no API keys or model downloads — the core engine and T0 heuristics run locally.

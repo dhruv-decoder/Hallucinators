@@ -10,11 +10,14 @@ One layer, three coupled risks, one verdict:
 - **Cost** — is this the cheapest path to this quality?
 - **Responsibility** — is it biased, unsafe, or leaking data?
 
-> Status: **early prototype.** The decision engine (the VoI cascade, calibration, expected-loss stopping
-> rule, P&L ledger, hash-chained receipts, and the What-If/Replay simulator) runs today and is unit-tested.
-> The OpenAI-compatible proxy, the richer detectors (HHEM/MiniCheck groundedness, GLiNER PII, safety
-> models), and the Control-Tower UI are in progress. What is implemented vs. planned is stated honestly
-> below and in [docs/PLAN.md](docs/PLAN.md).
+> Status: **working prototype.** The decision engine (the VoI cascade, calibration, expected-loss stopping
+> rule, P&L ledger, hash-chained receipts, and the What-If/Replay simulator), **the OpenAI-compatible proxy
+> ("The Tower") with inline auto-repair / PII-redaction / mid-stream abort, and the live Control-Tower
+> dashboard** all run today and are unit-tested (51 tests). Point any OpenAI client at it with a one-line
+> `base_url` swap. The richer model-backed detectors (HHEM/MiniCheck groundedness, GLiNER, safety models)
+> and labelled public-data evals are the next lift. What is implemented vs. planned is stated honestly below
+> and in [docs/PLAN.md](docs/PLAN.md). New here? Read [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) first — it
+> explains every component and the end-to-end user flow with diagrams.
 
 ## Why this is different
 
@@ -25,6 +28,14 @@ when the check's expected reduction in loss beats its own cost and latency. See
 
 ## What runs today
 
+- **The Tower — OpenAI-compatible proxy** (`controlplane/proxy/`) — a real `/v1/chat/completions` gateway
+  (streaming + non-streaming). Point any OpenAI client's `base_url` at it and every response is overseen
+  inline: **auto-repaired** from retrieved context, **PII-redacted / blocked**, or **escalated** to a human,
+  with a **mid-stream abort** that stops a leak before the tokens leave. Runs fully offline via a simulated
+  failure-injecting upstream (no keys, no downloads); routes to real models via `litellm` when a key is set.
+- **Control-Tower dashboard** (`controlplane/proxy/static/`) — a live, single-file UI served by the proxy:
+  the Oversight P&L going net-negative, the confidently-wrong quadrant, the adaptive thermostat, and a
+  click-into-any-receipt drawer with the full value-of-information trace. `make serve`, then open the page.
 - **VoI decision engine** (`controlplane/cascade/voi.py`) — expected loss `= P(failure) x Cost(failure)`, the
   value-of-information of the next check, and the stopping rule that decides whether to climb a tier.
 - **Probability calibration** (`controlplane/cascade/calibration.py`) — Platt and isotonic (PAV)
@@ -51,12 +62,23 @@ when the check's expected reduction in loss beats its own cost and latency. See
 
 ```bash
 make install      # creates .venv and installs the core engine + dev tools
-make test         # unit tests for the VoI math, calibration, P&L, and replay
+make test         # unit tests for the VoI math, calibration, P&L, replay, and the proxy
 make demo         # runs sample requests through the cascade and prints receipts + a P&L summary
 make whatif       # re-runs a workload under strict/balanced/lenient/off to show the risk-vs-cost trade-off
 ```
 
-The demo needs no API keys or model downloads — the core engine and T0 heuristics run locally.
+**See the whole thing live (the Tower + Control-Tower dashboard):**
+
+```bash
+make install-serve   # adds the proxy deps (FastAPI, uvicorn, httpx)
+make serve           # starts The Tower on http://127.0.0.1:8000  → open it in a browser
+make traffic         # (in a second terminal) fires the demo workload at it via a one-line base_url swap
+```
+
+Then click **“Send demo traffic”** on the dashboard and watch the Oversight P&L go net-negative in real
+time. Everything needs no API keys or model downloads — the engine, T0 heuristics, and the simulated
+failure-injecting upstream all run locally. Set `OPENAI_API_KEY` (and `pip install -e ".[providers]"`) to
+route to a real model instead.
 
 ### Run on Windows (VS Code)
 
@@ -113,9 +135,13 @@ controlplane/         # the Python package
   cascade/            # VoI engine, calibration, tier orchestration, detectors
   pnl/                # pricing table + Oversight P&L ledger
   recorder/           # receipt builder + hash-chained store
-  demo/               # end-to-end runnable demo
+  replay/             # What-If / Replay simulator (the proof engine)
+  feedback/           # override -> recalibrate learning loop
+  eval/               # labelled failure-injection harness + metrics + baselines
+  proxy/              # The Tower: OpenAI-compatible gateway + oversight service + dashboard (static/)
+  demo/               # end-to-end runnable demos
 tests/                # unit tests
-docs/                 # PLAN.md, WORKPLAN.md, JUDGE.md, guidelines, ARCHITECTURE, DECISIONS
+docs/                 # WALKTHROUGH (start here), PLAN, ARCHITECTURE, JUDGE, DECISIONS, WORKPLAN
   reference/          # competition briefs and the Round-1 solution
 ```
 

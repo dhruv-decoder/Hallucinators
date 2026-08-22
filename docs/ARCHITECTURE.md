@@ -1,8 +1,9 @@
 # Architecture
 
-How the ControlPlane oversight engine works, end to end. This describes what is implemented today (the
-decision engine and the What-If/Replay simulator); the proxy, richer detectors, and UI are tracked in
-[PLAN.md](PLAN.md).
+How the ControlPlane oversight engine works, end to end. This describes what is implemented today — the
+decision engine, the What-If/Replay simulator, **and now the OpenAI-compatible proxy (The Tower) and the
+Control-Tower dashboard** (section 14). The richer model-backed detectors are tracked in [PLAN.md](PLAN.md).
+For a gentler, diagram-led tour of the whole system and the user flow, read [WALKTHROUGH.md](WALKTHROUGH.md).
 
 ## 1. The one idea
 
@@ -154,3 +155,33 @@ public data behind the same interface. Run it with `make eval`; every number is 
   `docs/EVIDENCE.md` before any figure is published.
 - **Reference decision / policy.** Action selection is a simple threshold reference; the full governance
   policy engine is P2's.
+
+## 14. The Tower (proxy) and Control-Tower UI
+
+The engine above is a library; **The Tower** ([`controlplane/proxy/`](../controlplane/proxy/)) is the inline
+placement that makes it a product. It is a FastAPI app exposing an **OpenAI-compatible** `/v1/chat/completions`
+(streaming and non-streaming) plus `/v1/models`, so any OpenAI client works with a one-line `base_url` swap.
+
+Request path (`proxy/app.py` → `proxy/oversight.py`):
+
+```
+OpenAI request → upstream.generate() → OversightService.oversee():
+   RequestContext → thermostat scrutiny → CascadeEngine.run() → PnlLedger.book()
+   → actions.apply_action() (pass/annotate/auto-repair/redact/block) → recorder.record() → SSE fan-out
+→ OpenAI-shaped response + a `controlplane` block (action, per-axis p_fail, net $, receipt id)
+```
+
+- **Upstream** (`proxy/upstream.py`). A deterministic, offline **failure-injecting** simulator by default
+  (no keys, no downloads) that returns realistic support-bot/copilot traffic with planted failures and the
+  RAG context to check against; a real multi-provider path via `litellm` turns on when a provider key is set.
+- **Action layer** (`proxy/actions.py`). Where `AUTO_REPAIR` (deferred by `decision.py`) is honestly
+  realized: a grounded correction from retrieved context when the model is probably wrong, deterministic PII
+  redaction, or a block that never forwards the sensitive value. Everything else honours the engine's action.
+- **Mid-stream abort** (`proxy/app.py::_stream_completion`). Streams tokens but holds back digit-bearing runs
+  until they prove safe; a completed card/SSN triggers an abort so the leaked tokens never leave the server.
+- **Oversight API + dashboard.** `/v1/oversight/{summary,receipts,stream,policy,simulate,replay}` feed the
+  single-file Control-Tower UI (`proxy/static/index.html`): live SSE feed, the Oversight P&L, the
+  confidently-wrong quadrant, the thermostat, and a click-into-any-receipt drawer with the full VoI trace.
+- **Concurrency.** Detectors are pure and run outside a lock; only the mutating section (ledger totals,
+  recorder hash chain, thermostat window, SSE fan-out) is serialized, so parallel requests can't corrupt the
+  chain. Run it with `make serve`; drive it with `make traffic`.

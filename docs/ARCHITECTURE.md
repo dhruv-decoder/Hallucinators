@@ -101,7 +101,19 @@ a monotonic dial: stricter policies cut residual risk further but escalate more 
 ControlPlane policy is self-funding. These are ControlPlane's own risk estimates, not ground-truth failure
 rates; the labelled eval harness will measure the latter. Run it with `make whatif`.
 
-## 10. Known limitations (stated honestly)
+## 10. Adaptive Oversight Thermostat
+
+Thoroughness should not be fixed: a quiet hour and a risk spike deserve different scrutiny. The thermostat
+([`controlplane/cascade/thermostat.py`](../controlplane/cascade/thermostat.py)) is a proportional
+controller over a sliding window of recent risk (the max calibrated failure probability per request). It
+outputs a *scrutiny* multiplier, `scrutiny = clip(1 + gain * (recent_mean_risk - setpoint), s_min, s_max)`,
+which the stopping rule applies to the value of information (`voi.decide_check`). Above 1.0 the system runs
+more paid checks; below 1.0 it relaxes. It is causal — scrutiny for a request is set from risk seen on
+previous requests — so a burst of risky traffic ramps scrutiny up over the next few requests and it decays
+once calm returns. At the default `scrutiny=1.0` the engine behaves exactly as the plain VoI rule, so the
+controller is strictly additive. Run it with `make thermostat`.
+
+## 11. Known limitations (stated honestly)
 
 - **Base-rate blind spot.** If every cheap T0 detector is silent (e.g. a calm, unhedged answer with no
   retrieved context), the axis probability starts near zero and the VoI rule may skip further checks. The

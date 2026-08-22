@@ -81,6 +81,17 @@ more escalations) and a defensible self-funding number, clearly labelled as Cont
 rather than measured failure rates. The labelled eval harness will later replace estimates with measured
 precision/recall.
 
+## ADR-0013 — The thermostat modulates scrutiny by scaling value-of-information
+**Context.** Oversight thoroughness should rise under risk and relax when calm, but the change must be
+transparent and must not alter the engine for callers who do not use it. **Decision.** A proportional
+controller over recent risk emits a scrutiny multiplier; the stopping rule multiplies the value of
+information by it (`voi.decide_check(..., scrutiny=s)`), and the trace records the scrutiny-adjusted value
+that was actually compared to cost. Default `scrutiny=1.0` is the plain VoI rule. **Consequences.** The
+adaptation is additive and explainable (a readable P-controller, not a black box); a risk burst provably
+tips marginal checks from skip to run, then decays. Scaling VoI (rather than cost or stakes) keeps the one
+economic comparison intact. A PID/bandit controller can replace the P-controller later without touching
+the engine seam.
+
 ## Known open issue — base-rate blind spot
 If all cheap T0 detectors are silent, an axis starts near p=0 and the VoI rule may skip paid checks, so a
 calm, contextless hallucination could slip through. Planned fix: a per-axis prior base rate plus cheap

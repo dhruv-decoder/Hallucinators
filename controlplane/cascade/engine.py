@@ -62,7 +62,13 @@ class CascadeEngine:
         calibrator = self.calibrators.get(signal.name, IdentityCalibrator())
         return calibrator.predict_one(signal.score)
 
-    def run(self, ctx: RequestContext) -> CascadeResult:
+    def run(self, ctx: RequestContext, scrutiny: float = 1.0) -> CascadeResult:
+        """Run the cascade for one request.
+
+        ``scrutiny`` is the adaptive thermostat's multiplier on the value of information: above 1.0 the
+        stopping rule runs more checks (risky regime), below 1.0 it relaxes. The default 1.0 is the plain
+        VoI rule, so callers that do not use the thermostat are unaffected.
+        """
         result = CascadeResult(request_id=ctx.request_id, use_case=ctx.use_case)
 
         # 1. Cost axis: run every (free) cost detector.
@@ -76,7 +82,7 @@ class CascadeEngine:
             axis_detectors = [d for d in self.detectors if d.axis == axis]
             if not axis_detectors:
                 continue
-            outcome, p_after_t0 = self._run_axis(ctx, axis, axis_detectors, result)
+            outcome, p_after_t0 = self._run_axis(ctx, axis, axis_detectors, result, scrutiny)
             result.per_axis[axis] = outcome
             cost_fail = self.policy.cost_fail.get(axis, 1.0)
             loss_before += p_after_t0 * cost_fail
@@ -97,6 +103,7 @@ class CascadeEngine:
         axis: Axis,
         axis_detectors: list[Detector],
         result: CascadeResult,
+        scrutiny: float = 1.0,
     ) -> tuple[AxisOutcome, float]:
         """Run one axis's cascade. Returns its outcome and the probability after only the T0 tier."""
         cost_fail = self.policy.cost_fail.get(axis, 1.0)
@@ -159,6 +166,7 @@ class CascadeEngine:
                 detector_cost_usd=detector.est_cost_usd,
                 detector_latency_ms=detector.est_latency_ms,
                 lambda_latency=self.policy.lambda_latency,
+                scrutiny=scrutiny,
             )
             if not decision.run:
                 result.trace.append(

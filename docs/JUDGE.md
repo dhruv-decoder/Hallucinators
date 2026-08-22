@@ -73,7 +73,7 @@ mechanism. The risk is being long on narrative and short on proof — this score
 | 6 | **Feedback loops** (learning from overrides) | 4 | 2 | 0 | Still the weakest. Ship override → recalibrate (P1 has calibration ready to reuse). |
 | 7 | **Metrics & monitoring** (FP/FN, trustworthiness to a skeptic, reproducible) | 9 | 4 | 1 | Calibration + ECE exist; the eval harness + baselines are the next big lift (P2 runner, P3 data). |
 | 8 | **Hard complexities handled** (no ground truth, risk overlap, over/under-flag, multi-turn/agents, evolving regs, API-only) | 10 | 4 | 3 | No-ground-truth (self-consistency), over/under-flag (VoI knobs), API-only (I/O) all coded. Multi-turn/agent pending. |
-| 9 | **Innovation / novelty / differentiation** (VoI, self-funding, thermostat, replay, receipts) | 10 | 5 | 4 | VoI + self-funding P&L + receipts run live and net negative. "5" = Replay + Thermostat shipped. |
+| 9 | **Innovation / novelty / differentiation** (VoI, self-funding, thermostat, replay, receipts) | 10 | 5 | 5 | Full moonshot trio shipped and tested: VoI + self-funding P&L + receipts + Replay (proof engine) + adaptive Thermostat. |
 | 10 | **Technical depth & AI proficiency** (for the AI discussion) | 8 | 4 | 3 | Calibration + VoI implemented and tested from scratch. "5" = each member can defend it live. |
 | 11 | **Tech-stack expertise & engineering quality** | 5 | 3 | 4 | Typed, 20 tests green, lint-clean, one-command run, pinned deps, no dead code. |
 | 12 | **Practicality, scalability & measurable impact** (R2 explicit) | 7 | 3 | 2 | Demo runs; scale still simulated small. "5" = throughput/latency + a labelled at-scale ₹ extrapolation. |
@@ -81,11 +81,12 @@ mechanism. The risk is being long on narrative and short on proof — this score
 | 14 | **Deliverable quality** (prototype runs, README, video, public repo) | 4 | 2 | 2 | Runs from a clean clone (`make demo`), README + public repo done. Missing: demo video + eval numbers. |
 | 15 | **Evidence integrity / credibility** (no fabricated claims) | 3 | 2 | 2 | Three R1 incidents confirmed by the team; now must be *documented with links* in `EVIDENCE.md`, and the illustrative P&L prices replaced with sourced ones. "5" = every published number has a link or a `make eval` source. |
 
-**Weighted snapshot (updated after the P1 engine build):** Design readiness ≈ **78%**; Built readiness ≈
-**~51%** of max (was ~2% at plan stage). Interpretation: *the decision engine — our differentiator — is
-built, tested, and demonstrably self-funding, which is the hard part. The remaining lift is proof and
-surface: the eval harness with real FP/FN numbers (#7), model-based detectors (#2), the proxy + UI so it
-looks like a product (#4, deliverables), the feedback loop (#6, still 0), and documenting evidence (#15).*
+**Weighted snapshot (updated after the moonshot trio):** Design readiness ≈ **78%**; Built readiness ≈
+**~53%** of max (was ~2% at plan stage, ~51% after the engine). Interpretation: *the decision engine and
+the full moonshot trio (Replay + Thermostat + Receipts) are built, tested, and demonstrably self-funding —
+the hard, differentiating part is done. The remaining lift is proof and surface: the eval harness with real
+FP/FN numbers (#7), model-based detectors (#2), the proxy + UI so it looks like a product (#4,
+deliverables), the feedback loop (#6, still 0), and documenting evidence (#15).*
 
 *(Recompute the % whenever scores change: weighted mean of the column ÷ 5. Keep it honest — if it's not
 measured or not runnable, it's not a 4+.)*

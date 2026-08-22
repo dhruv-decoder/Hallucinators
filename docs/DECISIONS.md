@@ -113,6 +113,16 @@ explainable (the same reliability curve, now fitted from real reviews) and direc
 flagging; detectors with sparse feedback keep their default calibration. Only calibration is learned for
 now, not detector internals or thresholds — a deliberate, safe first step.
 
+## ADR-0016 — Ship a synthetic labelled seed set so the harness produces real numbers now
+**Context.** The eval harness needs labelled data to compute precision/recall, but real public datasets and
+their licensing are P3's task and not ready yet. **Decision.** Hand-build a small, clearly-labelled
+synthetic dataset with deliberate hard cases (a subtly-wrong number, a confident-but-correct answer, a
+name-only PII leak, a two-axis-at-once item), and label it explicitly as a seed, not a benchmark. The
+harness, metrics, and baselines are dataset-agnostic (`LabeledExample`), so swapping in real data changes
+nothing else. **Consequences.** We get honest, reproducible FP/FN numbers today (and imperfect ones, which
+are more credible and point directly at the NER detector and the feedback loop), without waiting on data
+collection or overstating results as a benchmark.
+
 ## Known open issue — base-rate blind spot
 If all cheap T0 detectors are silent, an axis starts near p=0 and the VoI rule may skip paid checks, so a
 calm, contextless hallucination could slip through. Planned fix: a per-axis prior base rate plus cheap

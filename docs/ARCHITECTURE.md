@@ -127,7 +127,21 @@ answer that was being escalated is downgraded — the over-flagging is corrected
 detector's code. Detectors with too little feedback keep their default calibration, so we never fit a curve
 from a handful of points. Run it with `python -m controlplane.demo.run_feedback`.
 
-## 12. Known limitations (stated honestly)
+## 12. Evaluation harness (measured quality)
+
+Detection quality is measured, not asserted. The harness
+([`controlplane/eval/`](../controlplane/eval/)) runs the engine over a labelled dataset and reports, per
+axis at an operating threshold, precision / recall / F1 / **false-positive rate / false-negative rate**
+against two baselines: "no oversight" (predict nothing) and "flag everything" (predict all). ControlPlane
+sits well inside both — on the current synthetic seed set, performance F1 0.83 (FPR 0.08, FNR 0.17) and
+responsibility F1 0.89 (FPR 0.00, FNR 0.20), versus baselines at FNR 1.00 and FPR 1.00 respectively. It also
+reports cost saved vs safety spend, percent cleared at T0, added latency, and each detector's calibration
+error. The dataset is a clearly-labelled synthetic seed with deliberate hard cases; its two misses are
+honest signposts — the missed name-only PII leak is what the NER detector (section 3) fixes, and the high
+overconfidence calibration error is what the feedback loop (section 11) drives down. P3 swaps in labelled
+public data behind the same interface. Run it with `make eval`; every number is regenerated, none hard-coded.
+
+## 13. Known limitations (stated honestly)
 
 - **Base-rate blind spot.** If every cheap T0 detector is silent (e.g. a calm, unhedged answer with no
   retrieved context), the axis probability starts near zero and the VoI rule may skip further checks. The

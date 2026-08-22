@@ -42,6 +42,10 @@ when the check's expected reduction in loss beats its own cost and latency. See
   raises verification thoroughness when recent risk spikes and relaxes it when traffic is calm.
 - **Optional model-backed PII** (`controlplane/cascade/detectors/responsibility_ml.py`) — a real Presidio +
   spaCy NER detector that catches free-text names/locations the regex misses (`[ml]` extra; see below).
+- **Feedback loop** (`controlplane/feedback/`) — human overrides on flagged decisions refit detector
+  calibration, so detection gets more honest over time (`python -m controlplane.demo.run_feedback`).
+- **Evaluation harness** (`controlplane/eval/`) — `make eval` reports per-axis precision/recall/F1/FPR/FNR
+  against no-oversight and flag-everything baselines, plus cost and calibration, all reproducibly.
 
 ## Run it
 

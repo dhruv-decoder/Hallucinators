@@ -8,6 +8,7 @@ help:
 	@echo "make demo       - run the end-to-end oversight demo on sample requests"
 	@echo "make whatif     - run the What-If/Replay comparison across oversight policies"
 	@echo "make thermostat - run the adaptive thermostat demo (calm -> risky burst -> calm)"
+	@echo "make eval       - run the evaluation harness (P/R/F1/FPR/FNR, baselines, cost, calibration)"
 	@echo "make lint       - run ruff over the codebase"
 	@echo "make clean      - remove caches and build artifacts"
 
@@ -27,6 +28,9 @@ whatif:
 
 thermostat:
 	python -m controlplane.demo.run_thermostat
+
+eval:
+	python -m controlplane.eval.run
 
 lint:
 	ruff check controlplane tests

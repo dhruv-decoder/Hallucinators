@@ -22,11 +22,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The gateway / proxy layer (owned by P2). Kept optional so the core engine can be
-# installed and tested on its own.
+# The gateway / proxy layer (The Tower) + the Control-Tower dashboard. Kept optional so the core engine can
+# be installed and tested on its own. This is enough to run the whole demo offline (no model downloads).
 serve = [
   "fastapi==0.141.1",
   "uvicorn==0.52.3",
+  "httpx>=0.27",  # used by the one-line base_url-swap traffic driver
+]
+# Real multi-provider upstream (OpenAI/Anthropic/Bedrock/OSS). Only needed to route to a live model instead
+# of the offline simulator; the proxy imports litellm lazily so it is never a hard dependency.
+providers = [
   "litellm>=1.0",
 ]
 # Optional model-backed detectors. Presidio + spaCy power the NER-based PII detector (realised today).

@@ -17,7 +17,8 @@ authors = [
 # without downloading any ML models). Pinned to the versions we develop against.
 dependencies = [
   "pydantic==2.13.4",
-  "numpy==2.5.2",
+  # Range rather than an exact pin because the optional [ml] extra (spaCy) currently requires numpy<2.5.
+  "numpy>=2.4,<2.6",
 ]
 
 [project.optional-dependencies]
@@ -28,12 +29,13 @@ serve = [
   "uvicorn==0.52.3",
   "litellm>=1.0",
 ]
-# Heavy detector models (groundedness, PII, safety). Added as we wire real models
-# in place of the T0 heuristics. Left unpinned until we choose exact versions.
+# Optional model-backed detectors. Presidio + spaCy power the NER-based PII detector (realised today).
+# After installing this extra, download the spaCy model once:
+#   python -m spacy download en_core_web_sm
+# Left with loose bounds; groundedness (HHEM/MiniCheck) and safety models are added as they are wired.
 ml = [
-  "gliner",
-  "presidio-analyzer",
-  "sentence-transformers",
+  "presidio-analyzer>=2.2",
+  "spacy>=3.7,<4",
 ]
 # Developer tooling.
 dev = [

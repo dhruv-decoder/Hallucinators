@@ -31,8 +31,9 @@ frozen so the engine (P1), proxy/recorder (P2), and UI (P3) can be built against
 - **Performance** (failure-type): wrong, or confidently wrong. Detectors: overconfidence (T0), lexical
   groundedness vs retrieved context (T0), self-consistency across samples (T1). Upgrades: HHEM/MiniCheck,
   semantic entropy.
-- **Responsibility** (failure-type): biased, unsafe, leaking. Detectors: regex/Luhn PII (T0). Upgrades:
-  GLiNER/Presidio, safety classifiers, Llama-Guard-class review.
+- **Responsibility** (failure-type): biased, unsafe, leaking. Detectors: regex/Luhn PII (T0), plus an
+  optional Presidio + spaCy **NER PII detector** (T0, `[ml]` extra) that catches free-text identifiers
+  (names, locations) the regex is blind to. Upgrades: safety classifiers, Llama-Guard-class review.
 - **Cost** (funding side): a cheaper path to the same quality. Detectors: model-overkill (T0), semantic
   cache (T0). Upgrades: a learned router, embedding near-duplicate cache. Its savings **fund** the other
   two axes, which is why oversight can net negative.

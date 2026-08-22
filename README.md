@@ -40,6 +40,8 @@ when the check's expected reduction in loss beats its own cost and latency. See
   policies (and oversight-off) to show the residual-risk vs. cost trade-off and prove the P&L is self-funding.
 - **Adaptive Oversight Thermostat** (`controlplane/cascade/thermostat.py`) — a feedback controller that
   raises verification thoroughness when recent risk spikes and relaxes it when traffic is calm.
+- **Optional model-backed PII** (`controlplane/cascade/detectors/responsibility_ml.py`) — a real Presidio +
+  spaCy NER detector that catches free-text names/locations the regex misses (`[ml]` extra; see below).
 
 ## Run it
 

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+.env.local
+
+# Data (fetched by scripts; not committed)
+data/raw/
+data/cache/
+*.sqlite
+*.db
+recorder_log.jsonl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Node / UI (added later)
+node_modules/
+ui/.next/
+ui/out/

@@ -401,7 +401,9 @@ Run `make serve` + `make traffic` and you'll see exactly this, live.
   streaming + abort, PII detection/redaction/blocking, agentic trajectory oversight, the compliance pack, the
   dashboard, and — now wired behind a factory — **model-backed detectors** (HHEM-2.1 groundedness, Presidio
   NER) and a **real T2 LLM-judge** (litellm or local Ollama) the VoI rule climbs to on the uncertain tail.
-  Prices are now **sourced** (Aug 2026, see [EVIDENCE.md](EVIDENCE.md)). 70 passing tests.
+  Prices are now **sourced** (Aug 2026, see [EVIDENCE.md](EVIDENCE.md)), and the groundedness lift is
+  **measured on real HaluEval data** (heuristic F1 0.30 → cascade+HHEM F1 0.76) with a measured sub-ms
+  latency benchmark. 73 passing tests.
 - **Simulated / placeholder (labelled as such):** the upstream model is offline failure-injection so the demo
   runs with no keys, and the *default* detectors are lightweight **T0 heuristics** (lexical overlap, regex) —
   the model-backed upgrades above are optional (`[ml]` extra / a judge backend) and off by default. Any

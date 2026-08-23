@@ -10,14 +10,19 @@ One layer, three coupled risks, one verdict:
 - **Cost** — is this the cheapest path to this quality?
 - **Responsibility** — is it biased, unsafe, or leaking data?
 
-> Status: **working prototype.** The decision engine (the VoI cascade, calibration, expected-loss stopping
-> rule, P&L ledger, hash-chained receipts, and the What-If/Replay simulator), **the OpenAI-compatible proxy
-> ("The Tower") with inline auto-repair / PII-redaction / mid-stream abort, and the live Control-Tower
-> dashboard** all run today and are unit-tested (51 tests). Point any OpenAI client at it with a one-line
-> `base_url` swap. The richer model-backed detectors (HHEM/MiniCheck groundedness, GLiNER, safety models)
-> and labelled public-data evals are the next lift. What is implemented vs. planned is stated honestly below
-> and in [docs/PLAN.md](docs/PLAN.md). New here? Read [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) first — it
-> explains every component and the end-to-end user flow with diagrams.
+> Status: **working prototype (73 tests, lint-clean, offline-first).** Runs end to end on a laptop with no API
+> keys: the VoI decision engine (cascade, calibration, expected-loss stopping rule, P&L, hash-chained
+> receipts, replay, thermostat, feedback), **the OpenAI-compatible proxy "The Tower"** (auto-repair /
+> PII-redaction / mid-stream abort), **a modern multi-view Control-Tower dashboard**, **agentic trajectory
+> oversight**, **model-backed detectors** (HHEM-2.1 groundedness + a VoI-gated T2 LLM-judge), a **compliance
+> evidence pack**, and a **latency/throughput benchmark**. Point any OpenAI client at it with a one-line
+> `base_url` swap; deploy the whole thing as one service (see [docs/DEPLOY.md](docs/DEPLOY.md)). New here? Read
+> [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — it explains every component and the user flow with diagrams.
+>
+> **Measured on real data (not asserted):** on HaluEval, the cheap lexical groundedness check scores **F1 0.30**
+> (it misses 81% of real hallucinations); the VoI cascade climbing to **HHEM-2.1 only on the uncertain tail**
+> reaches **F1 0.76** and beats flag-everything, while 53% clears free at T0. Oversight adds **p50 0.12 ms /
+> p95 0.16 ms** at **~7,100 req/s** on a laptop. Every number is reproducible — see [docs/EVIDENCE.md](docs/EVIDENCE.md).
 
 ## Why this is different
 
@@ -92,9 +97,17 @@ make traffic         # (in a second terminal) fires the demo workload at it via 
 ```
 
 Then click **“Send demo traffic”** on the dashboard and watch the Oversight P&L go net-negative in real
-time. Everything needs no API keys or model downloads — the engine, T0 heuristics, and the simulated
-failure-injecting upstream all run locally. Set `OPENAI_API_KEY` (and `pip install -e ".[providers]"`) to
-route to a real model instead.
+time. The dashboard has views for the live feed, the confidently-wrong map, the P&L, a **latency & scale
+benchmark** (with a live progress bar + ETA), **What-If replay**, **agent oversight**, **compliance**, and a
+**getting-started** guide. Everything needs no API keys or model downloads. Set `OPENAI_API_KEY` (and
+`pip install -e ".[providers]"`) to route to a real model, or `pip install -e ".[ml]"` for HHEM groundedness.
+
+**Prove it on real data / at scale:**
+```bash
+pip install -e ".[eval]"                 # the `datasets` library
+make eval-real                           # ControlPlane vs baselines on real HaluEval data
+make eval-real ARGS="--models"           # same, but with HHEM-2.1 (needs the [ml] extra)
+```
 
 ### Run on Windows (VS Code)
 

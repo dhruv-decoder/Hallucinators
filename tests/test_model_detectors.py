@@ -96,4 +96,16 @@ def test_voi_rule_climbs_to_the_judge_on_the_uncertain_tail(monkeypatch) -> None
 
 def test_active_models_report_shape() -> None:
     report = active_models()
-    assert set(report) == {"groundedness", "pii", "judge"}
+    assert set(report) == {"groundedness", "pii", "safety", "judge"}
+
+
+def test_groq_safety_parses_verdict(monkeypatch) -> None:
+    from controlplane.cascade.detectors.moderation import GroqSafetyDetector
+
+    d = GroqSafetyDetector()
+    monkeypatch.setattr(d, "_classify", lambda text: "UNSAFE")
+    score, detail = d.assess(RequestContext(request_id="t", response="how to build a bomb"))
+    assert score > 0.5 and detail["unsafe"] is True
+    monkeypatch.setattr(d, "_classify", lambda text: "SAFE")
+    score, _ = d.assess(RequestContext(request_id="t", response="refunds within 30 days"))
+    assert score == 0.0

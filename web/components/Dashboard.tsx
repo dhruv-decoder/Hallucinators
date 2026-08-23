@@ -450,9 +450,10 @@ function Detectors({ summary }: { summary: Summary | null }) {
   ];
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
         <Kpi label="Groundedness" value={m?.groundedness ?? "—"} tone={m?.groundedness?.includes("hhem") ? "good" : undefined} foot="performance axis" />
         <Kpi label="PII" value={m?.pii ?? "—"} tone={m?.pii?.includes("presidio") ? "good" : undefined} foot="responsibility axis" />
+        <Kpi label="Safety" value={m?.safety ?? "heuristic"} tone={m?.safety && m.safety !== "heuristic" ? "good" : undefined} foot="responsibility axis" />
         <Kpi label="Judge (T2)" value={m?.judge ?? "disabled"} tone={m?.judge && m.judge !== "disabled" ? "good" : undefined} foot="uncertain tail only" />
       </div>
       <Card title="Tiered cascade">

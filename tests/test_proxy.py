@@ -181,7 +181,7 @@ def test_dashboard_and_static_assets_served(client: TestClient) -> None:
 def test_healthz_reports_models(client: TestClient) -> None:
     h = client.get("/healthz").json()
     assert h["ok"] is True
-    assert set(h["models"]) == {"groundedness", "pii", "judge"}
+    assert set(h["models"]) == {"groundedness", "pii", "safety", "judge"}
 
 
 def test_benchmark_job_runs_with_progress(client: TestClient) -> None:

@@ -27,6 +27,7 @@ from controlplane.cascade.detectors.bias import BiasHeuristicDetector
 from controlplane.cascade.detectors.cost import ModelOverkillDetector, SemanticCacheDetector
 from controlplane.cascade.detectors.groundedness_model import HHEMGroundednessDetector
 from controlplane.cascade.detectors.judge import LlmJudgeDetector
+from controlplane.cascade.detectors.moderation import GroqSafetyDetector
 from controlplane.cascade.detectors.performance import (
     GroundednessHeuristicDetector,
     OverconfidenceDetector,
@@ -97,6 +98,13 @@ def build_failure_detectors(
         except Exception:  # noqa: BLE001
             pass
 
+    # Optional model-backed content safety (opt-in; protects the Groq free-tier rate limit).
+    if not disabled and GroqSafetyDetector.available():
+        try:
+            responsibility.append(GroqSafetyDetector())
+        except Exception:  # noqa: BLE001
+            pass
+
     return performance + responsibility
 
 
@@ -108,10 +116,14 @@ def build_cost_detectors() -> list[CostDetector]:
 def active_models() -> dict[str, str]:
     """Report which real models are active vs the heuristic fallback -- for /healthz and the dashboard."""
     if _models_disabled():
-        return {"groundedness": "lexical-heuristic", "pii": "regex-heuristic", "judge": "disabled"}
+        return {
+            "groundedness": "lexical-heuristic", "pii": "regex-heuristic",
+            "safety": "heuristic", "judge": "disabled",
+        }
     judge_ok, backend = LlmJudgeDetector.available()
     return {
         "groundedness": "hhem-2.1-open" if HHEMGroundednessDetector.available() else "lexical-heuristic",
         "pii": "presidio-ner" if _presidio_requested() else "regex-heuristic",
+        "safety": "gpt-oss-safeguard" if GroqSafetyDetector.available() else "heuristic",
         "judge": backend if judge_ok else "disabled",
     }

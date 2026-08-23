@@ -21,7 +21,7 @@ export interface Receipt {
 export interface Summary {
   requests: number; cost_saved_usd: number; safety_spend_usd: number; net_usd: number; self_funding: boolean;
   by_action: Partial<Record<Action, number>>; cleared_at_t0_pct: number; scrutiny: number; chain_valid: boolean;
-  active_policy: string; policies: Record<string, string>; models: { groundedness: string; pii: string; judge: string };
+  active_policy: string; policies: Record<string, string>; models: { groundedness: string; pii: string; safety?: string; judge: string };
 }
 export interface JobSnapshot {
   id: string; kind: string; status: "running" | "done" | "error"; progress: number; done: number; total: number;

@@ -65,30 +65,31 @@ mechanism. The risk is being long on narrative and short on proof — this score
 
 | # | Criterion (source) | Wt | Design | Built | Notes / what "5" needs |
 |---|---|---:|:--:|:--:|---|
-| 1 | **Problem understanding & fit** to ControlPlane brief (A1–A7) | 6 | 5 | 4 | Handles perf/cost/responsibility live, incl. a two-axis-at-once case (A2) in the eval set. "5" = shown in the demo video. |
-| 2 | **Detection breadth & depth** (B: heuristics, anomaly, judge, retrieval, PII) | 9 | 4 | 3 | T0 heuristics for all axes + a real NER PII model (Presidio) that beats the regex. Still need groundedness model (HHEM) + measured P/R. |
-| 3 | **Decision logic** (confidence scoring, tiered allow/edit/flag/block, human-in-loop) | 9 | 5 | 4 | VoI stopping rule + calibrated tiers + escalate/block all firing in the demo. "5" = AUTO_REPAIR wired. |
-| 4 | **Architecture** (placement, inline, parallel-for-latency) | 6 | 4 | 2 | Engine built; inline proxy + parallel async are P2's next. "5" = measured p50/p95 added latency. |
-| 5 | **Governance** (policy by use-case/geo/risk, audit trail) | 6 | 4 | 2 | PolicyProfile + hash-chained receipts built; hot-reload + multi-profile pending (P2). |
-| 6 | **Feedback loops** (learning from overrides) | 4 | 3 | 3 | Shipped: human overrides refit detector calibration (demo cuts ECE 0.40->0.01, corrects a false escalation). "5" = wired into the live override UI + threshold learning. |
-| 7 | **Metrics & monitoring** (FP/FN, trustworthiness to a skeptic, reproducible) | 9 | 4 | 3 | `make eval` reports per-axis P/R/F1/FPR/FNR vs no-oversight & flag-everything baselines + ECE, reproducibly. "5" = same numbers on labelled public data (P3). |
-| 8 | **Hard complexities handled** (no ground truth, risk overlap, over/under-flag, multi-turn/agents, evolving regs, API-only) | 10 | 4 | 3 | No-ground-truth (self-consistency), over/under-flag (VoI knobs), API-only (I/O) all coded. Multi-turn/agent pending. |
-| 9 | **Innovation / novelty / differentiation** (VoI, self-funding, thermostat, replay, receipts) | 10 | 5 | 5 | Full moonshot trio shipped and tested: VoI + self-funding P&L + receipts + Replay (proof engine) + adaptive Thermostat. |
-| 10 | **Technical depth & AI proficiency** (for the AI discussion) | 8 | 4 | 3 | Calibration + VoI implemented and tested from scratch. "5" = each member can defend it live. |
-| 11 | **Tech-stack expertise & engineering quality** | 5 | 3 | 4 | Typed, 20 tests green, lint-clean, one-command run, pinned deps, no dead code. |
-| 12 | **Practicality, scalability & measurable impact** (R2 explicit) | 7 | 3 | 3 | Measured added latency (~3 ms) + 100% cleared at T0 + reproducible impact numbers. "5" = throughput test + labelled at-scale ₹ extrapolation. |
-| 13 | **Accenture theme: humans-in-the-lead, value at scale** | 4 | 4 | 3 | Escalate action + auditor receipts + the override-learning loop are built; humans drive the tail and teach the system. "5" = narrated in the video with the live UI. |
-| 14 | **Deliverable quality** (prototype runs, README, video, public repo) | 4 | 2 | 2 | Runs from a clean clone (`make demo`), README + public repo done. Missing: demo video + eval numbers. |
-| 15 | **Evidence integrity / credibility** (no fabricated claims) | 3 | 2 | 2 | Three R1 incidents confirmed by the team; now must be *documented with links* in `EVIDENCE.md`, and the illustrative P&L prices replaced with sourced ones. "5" = every published number has a link or a `make eval` source. |
+| 1 | **Problem understanding & fit** to ControlPlane brief (A1–A7) | 6 | 5 | 4 | Handles perf/cost/responsibility live, incl. a two-axis-at-once case (A2), agents (A5), and API-only (A7). "5" = shown in the demo video. |
+| 2 | **Detection breadth & depth** (B: heuristics, anomaly, judge, retrieval, PII) | 9 | 5 | 4 | T0 heuristics all axes + Presidio NER + **HHEM-2.1 groundedness (measured F1 0.76 on real HaluEval)** + prompt-injection/unsafe + **a real T2 LLM-judge**. "5" = larger-n CI + more axes on public data. |
+| 3 | **Decision logic** (confidence scoring, tiered allow/edit/flag/block, human-in-loop) | 9 | 5 | 5 | VoI stopping rule + calibration + pass/annotate/**auto-repair**/escalate/block all firing inline; judge climbed to only on the tail. |
+| 4 | **Architecture** (placement, inline, parallel-for-latency) | 6 | 5 | 5 | Inline OpenAI-compatible proxy (streaming + mid-stream abort) + **measured p50 0.12ms / p95 0.16ms added latency, ~7,100 rps**. |
+| 5 | **Governance** (policy by use-case/geo/risk, audit trail) | 6 | 5 | 4 | Policy profiles + hash-chained receipts + **compliance evidence pack** (EU AI Act/ISO 42001/NIST). "5" = config hot-reload + more geo profiles (P2). |
+| 6 | **Feedback loops** (learning from overrides) | 4 | 3 | 3 | Human overrides refit detector calibration (demo cuts ECE 0.40->0.01). "5" = wired into the live override UI + threshold learning. |
+| 7 | **Metrics & monitoring** (FP/FN, trustworthiness to a skeptic, reproducible) | 9 | 5 | 4 | Per-axis P/R/F1/FPR/FNR vs baselines + ECE on synthetic **and real HaluEval** (`make eval-real`), reproducible. "5" = larger-n with confidence intervals. |
+| 8 | **Hard complexities handled** (no ground truth, risk overlap, over/under-flag, multi-turn/agents, evolving regs, API-only) | 10 | 5 | 4 | No-ground-truth (self-consistency/HHEM), overlap (2-axis case), over/under-flag (VoI knobs), **multi-turn/agents (trajectory auditor)**, evolving regs (policy-as-config + compliance), API-only (I/O). |
+| 9 | **Innovation / novelty / differentiation** (VoI, self-funding, thermostat, replay, receipts) | 10 | 5 | 5 | VoI + self-funding P&L + receipts + Replay + Thermostat + **agent waste-killer** + VoI-gated judge — shipped and tested. |
+| 10 | **Technical depth & AI proficiency** (for the AI discussion) | 8 | 5 | 4 | Calibration + VoI from scratch; cascade provably climbs to a model on the uncertain tail; measured lift on real data. "5" = each member defends it live. |
+| 11 | **Tech-stack expertise & engineering quality** | 5 | 5 | 5 | 73 tests green, lint-clean, typed; **Next.js/TS/Tailwind frontend + FastAPI backend**, pinned deps + lockfiles, Docker/Render, one-command run. |
+| 12 | **Practicality, scalability & measurable impact** (R2 explicit) | 7 | 4 | 4 | Measured p95 0.16ms + ~7,100 rps + 100% cleared@T0 + at-scale $ extrapolation. "5" = multi-tenant + real-provider load test. |
+| 13 | **Accenture theme: humans-in-the-lead, value at scale** | 4 | 5 | 4 | Escalate + auditor receipts + override-learning + agent abort→human, all in a real UI. "5" = narrated in the video. |
+| 14 | **Deliverable quality** (prototype runs, README, video, public repo) | 4 | 4 | 4 | Runs from a clean clone, README + WALKTHROUGH + DEPLOY + public repo + deployable (Render/Vercel). Missing: the demo video. |
+| 15 | **Evidence integrity / credibility** (no fabricated claims) | 3 | 4 | 4 | Prices sourced + measured results in `EVIDENCE.md`; a real env bug (transformers 5.x) found & documented. "5" = replace/verify the three R1 incidents. |
 
-**Weighted snapshot (updated after the moonshot trio + real detector + feedback loop + eval harness):**
-Design readiness ≈ **78%**; Built readiness ≈ **~62%** of max (was ~2% at plan stage, ~51% after the engine,
-~56% after the feedback loop). Interpretation: *the decision engine, the full moonshot trio (Replay +
-Thermostat + Receipts), a real model-backed detector (Presidio NER), the override→recalibrate feedback loop,
-and the evaluation harness (measured FP/FN vs baselines) are all built and tested. The remaining lift is
-mostly the product surface: the OpenAI-compatible proxy + Control-Tower UI (#4, deliverables), the
-groundedness model on real public data (#2/#7), the demo video, and documenting evidence (#15) — the last of
-which is now team-verified and just needs the source links written down.*
+**Weighted snapshot (updated after the proxy + UI + agents + compliance + model detectors + real-data eval + Next.js frontend):**
+Design readiness ≈ **95%**; Built readiness ≈ **~88%** of max (was ~2% at plan stage, ~62% after the eval
+harness). Interpretation: *the full vertical slice is now real and measured — inline OpenAI-compatible proxy
+with auto-repair/redaction/mid-stream abort, a modern Next.js/TS/Tailwind Control-Tower, agentic trajectory
+oversight, model-backed groundedness (HHEM, F1 0.30→0.76 on real HaluEval), a VoI-gated T2 judge (Groq/Ollama),
+a compliance evidence pack, and a measured latency/scale benchmark (p95 0.16ms, ~7,100 rps). The remaining lift
+is now almost entirely deliverables and hardening: the **demo video** (#14), **verifying/replacing the three R1
+incidents** (#15, the last credibility gap), **config hot-reload + multi-tenant** (#5/#12), and **wiring
+override-learning into the live UI** (#6).*
 
 *(Recompute the % whenever scores change: weighted mean of the column ÷ 5. Keep it honest — if it's not
 measured or not runnable, it's not a 4+.)*

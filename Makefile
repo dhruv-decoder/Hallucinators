@@ -10,7 +10,8 @@ help:
 	@echo "make whatif     - run the What-If/Replay comparison across oversight policies"
 	@echo "make thermostat - run the adaptive thermostat demo (calm -> risky burst -> calm)"
 	@echo "make agent      - run the agentic finale (an agent compounds a hallucination; auditor aborts it)"
-	@echo "make eval       - run the evaluation harness (P/R/F1/FPR/FNR, baselines, cost, calibration)"
+	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
+	@echo "make eval-real  - eval on a real benchmark (HaluEval); add ARGS='--models' for HHEM"
 	@echo "make serve      - run The Tower: OpenAI-compatible proxy + Control-Tower dashboard (:8000)"
 	@echo "make traffic    - fire the scripted demo workload at a running Tower (one-line base_url swap)"
 	@echo "make lint       - run ruff over the codebase"
@@ -42,6 +43,9 @@ agent:
 
 eval:
 	python -m controlplane.eval.run
+
+eval-real:
+	python -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
 
 serve:
 	python -m controlplane.proxy

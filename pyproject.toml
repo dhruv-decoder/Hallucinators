@@ -42,8 +42,14 @@ providers = [
 ml = [
   "presidio-analyzer>=2.2",
   "spacy>=3.7,<4",
-  "transformers>=4.40",  # HHEM-2.1-Open groundedness cross-encoder
+  # HHEM-2.1-Open's custom model code needs transformers 4.x -- with 5.x the checkpoint loads with
+  # newly-initialised (random) weights and silently produces garbage. Verified working on 4.44.2.
+  "transformers>=4.40,<5",
   "torch>=2.2",
+]
+# Real public-benchmark evaluation (HaluEval / RAGTruth). Optional; keeps the core install light.
+eval = [
+  "datasets>=2.19",
 ]
 # Developer tooling.
 dev = [

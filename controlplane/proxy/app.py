@@ -27,7 +27,7 @@ import queue
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from controlplane.cascade.detectors.responsibility import RegexPiiDetector
 from controlplane.core.types import RequestContext
@@ -156,6 +156,33 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         from controlplane.proxy.workload import replay_summary
 
         return await asyncio.to_thread(replay_summary)
+
+    @app.post("/v1/oversight/agent-demo")
+    async def agent_demo() -> dict:
+        """Run the compounding-hallucination agent trajectory under the trajectory auditor."""
+        return await asyncio.to_thread(service.run_agent_demo)
+
+    @app.get("/v1/oversight/compliance")
+    def compliance() -> dict:
+        """Map the recorded receipts to EU AI Act / ISO 42001 / NIST AI RMF controls (JSON)."""
+        from controlplane.compliance import generate_pack
+
+        return generate_pack(
+            service.recorder.receipts, service.recorder.verify_chain(), policy_id=service.policy.id
+        )
+
+    @app.get("/v1/oversight/compliance.md")
+    def compliance_md() -> PlainTextResponse:
+        """The same evidence pack rendered as a downloadable Markdown document."""
+        from controlplane.compliance import generate_pack, render_markdown
+
+        pack = generate_pack(
+            service.recorder.receipts, service.recorder.verify_chain(), policy_id=service.policy.id
+        )
+        return PlainTextResponse(
+            render_markdown(pack),
+            headers={"Content-Disposition": "attachment; filename=controlplane_compliance_pack.md"},
+        )
 
     # ---- Dashboard ---------------------------------------------------------------------------------
     @app.get("/")

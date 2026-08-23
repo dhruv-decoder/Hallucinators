@@ -82,6 +82,8 @@
   <span class="pill" id="p-chain">chain <b>—</b></span>
   <span class="grow"></span>
   <select id="policy" title="Active use-case policy"></select>
+  <button id="btn-agent">🤖 Agent demo</button>
+  <button id="btn-compliance">📋 Compliance pack</button>
   <button id="btn-replay">Run What-If replay</button>
   <button class="primary" id="btn-sim">▶ Send demo traffic</button>
 </header>
@@ -111,6 +113,21 @@
         <span><i class="swatch" style="background:var(--block)"></i>block</span>
         <span style="margin-left:auto">x → estimated correctness · y → model confidence</span>
       </div>
+    </div>
+
+    <div class="card" id="agent-card" style="display:none">
+      <h2>Agentic trajectory oversight — catching compounding risk (multi-turn)</h2>
+      <div id="agent-task" class="hint" style="margin-bottom:8px"></div>
+      <div id="agent-steps" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div id="agent-summary" style="margin-top:10px;padding:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;font-size:13px"></div>
+    </div>
+
+    <div class="card" id="compliance-card" style="display:none">
+      <h2>Compliance evidence pack — receipts → EU AI Act / ISO 42001 / NIST</h2>
+      <table class="replay"><thead><tr><th>framework</th><th>control</th><th>status</th></tr></thead>
+        <tbody id="compliance-body"></tbody></table>
+      <div style="margin-top:8px"><a id="compliance-dl" href="/v1/oversight/compliance.md" target="_blank"
+        style="color:var(--accent)">⬇ download full Markdown pack</a></div>
     </div>
 
     <div class="card" id="replay-card" style="display:none">
@@ -289,6 +306,44 @@ $('#btn-replay').onclick = async ()=>{
     tb.appendChild(tr);
   }
   $('#replay-card').style.display='block';
+};
+
+$('#btn-agent').onclick = async ()=>{
+  $('#btn-agent').disabled=true; $('#btn-agent').textContent='running…';
+  const r = await (await fetch('/v1/oversight/agent-demo',{method:'POST'})).json();
+  $('#agent-task').textContent = 'TASK · ' + r.task;
+  const box=$('#agent-steps'); box.innerHTML='';
+  const ACT={continue:['#39d98a','CONTINUE'],escalate:['#ffcf5c','FLAG'],abort:['#ff6b6b','ABORT']};
+  for(const v of r.verdicts){
+    const [col,label]=ACT[v.action]||['#888',v.action.toUpperCase()];
+    const loop = v.loop_repeat>=2? ` · loop x${v.loop_repeat}`:'';
+    const el=document.createElement('div');
+    el.style.cssText='display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid '+col+';border-radius:8px';
+    el.innerHTML=`<span class="badge" style="background:${col}22;color:${col}">${label}</span>`+
+      `<div style="font-size:12px"><b>step ${v.index}</b> · risk ${v.step_risk.toFixed(2)} · cumulative ${v.cumulative_risk.toFixed(2)}${loop}`+
+      `<div class="rid">${v.reason}</div></div>`+
+      `<div class="rid">${v.receipt_id}</div>`;
+    box.appendChild(el);
+  }
+  const savedTxt = r.wasted_usd>0? ` · saved $${r.wasted_usd.toFixed(5)} in avoided agent spend`:'';
+  $('#agent-summary').innerHTML = `<b style="color:${r.aborted_at!=null?'var(--escalate)':'var(--good)'}">`+
+    `${r.final_action.toUpperCase()}</b> — ${r.summary}${savedTxt}<br>`+
+    `<span class="hint">executed ${r.n_steps_executed}/${r.n_steps_planned} steps · wrong answer never reached the user</span>`;
+  $('#agent-card').style.display='block';
+  $('#btn-agent').disabled=false; $('#btn-agent').textContent='🤖 Agent demo';
+};
+
+$('#btn-compliance').onclick = async ()=>{
+  const p = await (await fetch('/v1/oversight/compliance')).json();
+  const tb=$('#compliance-body'); tb.innerHTML='';
+  for(const c of p.controls){
+    const ok = c.status==='evidenced';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${c.framework}</td><td>${c.control}</td>`+
+      `<td><span class="badge ${ok?'b-pass':'b-escalate'}">${c.status}</span></td>`;
+    tr.title=c.evidence; tb.appendChild(tr);
+  }
+  $('#compliance-card').style.display='block';
 };
 
 // ---- live stream --------------------------------------------------------------

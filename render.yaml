@@ -1,0 +1,15 @@
+# One-click deploy of The Tower to Render's free tier (a single web service; no GPU needed).
+# Render injects $PORT, which controlplane.proxy reads. Runs offline (simulated upstream); set a provider
+# key as an env var to route to a real model instead.
+services:
+  - type: web
+    name: controlplane-tower
+    runtime: python
+    plan: free
+    buildCommand: pip install -e ".[serve]"
+    startCommand: python -m controlplane.proxy
+    envVars:
+      - key: CONTROLPLANE_HOST
+        value: 0.0.0.0
+      - key: CONTROLPLANE_FORCE_SIM
+        value: "1"

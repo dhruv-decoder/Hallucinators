@@ -9,6 +9,7 @@ help:
 	@echo "make demo       - run the end-to-end oversight demo on sample requests"
 	@echo "make whatif     - run the What-If/Replay comparison across oversight policies"
 	@echo "make thermostat - run the adaptive thermostat demo (calm -> risky burst -> calm)"
+	@echo "make agent      - run the agentic finale (an agent compounds a hallucination; auditor aborts it)"
 	@echo "make eval       - run the evaluation harness (P/R/F1/FPR/FNR, baselines, cost, calibration)"
 	@echo "make serve      - run The Tower: OpenAI-compatible proxy + Control-Tower dashboard (:8000)"
 	@echo "make traffic    - fire the scripted demo workload at a running Tower (one-line base_url swap)"
@@ -35,6 +36,9 @@ whatif:
 
 thermostat:
 	python -m controlplane.demo.run_thermostat
+
+agent:
+	python -m controlplane.demo.run_agent
 
 eval:
 	python -m controlplane.eval.run

@@ -23,9 +23,11 @@ from controlplane.cascade.detectors import (
     GroundednessHeuristicDetector,
     ModelOverkillDetector,
     OverconfidenceDetector,
+    PromptInjectionDetector,
     RegexPiiDetector,
     SelfConsistencyDetector,
     SemanticCacheDetector,
+    UnsafeContentDetector,
 )
 from controlplane.cascade.engine import CascadeEngine
 from controlplane.cascade.thermostat import Thermostat, risk_score
@@ -124,6 +126,8 @@ class OversightService:
                 GroundednessHeuristicDetector(),
                 SelfConsistencyDetector(),
                 RegexPiiDetector(),
+                PromptInjectionDetector(),
+                UnsafeContentDetector(),
             ],
             cost_detectors=[ModelOverkillDetector(), SemanticCacheDetector()],
         )
@@ -205,6 +209,28 @@ class OversightService:
         with self._lock:
             self._request_seq += 1
             return f"req-{self._request_seq:05d}"
+
+    # -- agentic trajectory oversight ---------------------------------------------------------------
+    def run_agent_demo(self) -> dict:
+        """Run the compounding-hallucination trajectory under the auditor, into the live feed + P&L.
+
+        Each executed agent step is recorded as an ordinary receipt (so agent oversight shows up in the same
+        feed and audit trail), and the spend avoided by aborting early is booked as cost saved -- the agent
+        "waste-killer" contributing to the self-funding P&L.
+        """
+        from controlplane.agent import TrajectoryAuditor
+        from controlplane.agent.scenarios import TASK, compounding_hallucination_trajectory
+
+        policy = self.policies["support_bot"]
+        with self._lock:
+            auditor = TrajectoryAuditor(policy=policy, recorder=self.recorder)
+            before = len(self.recorder.receipts)
+            rec = auditor.audit(TASK, compounding_hallucination_trajectory())
+            for receipt in self.recorder.receipts[before:]:
+                self._subscribers.publish(receipt)
+            # The steps we never ran are money saved -> book into the self-funding ledger.
+            self.ledger.total_cost_saved += rec.wasted_usd
+        return rec.model_dump(mode="json")
 
     # -- UI feeds ------------------------------------------------------------------------------------
     def subscribe(self) -> queue.Queue[VoIReceipt]:

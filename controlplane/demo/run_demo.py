@@ -21,9 +21,11 @@ from controlplane.cascade.detectors import (
     GroundednessHeuristicDetector,
     ModelOverkillDetector,
     OverconfidenceDetector,
+    PromptInjectionDetector,
     RegexPiiDetector,
     SelfConsistencyDetector,
     SemanticCacheDetector,
+    UnsafeContentDetector,
 )
 from controlplane.cascade.engine import CascadeEngine
 from controlplane.core.types import PolicyProfile, RequestContext, VoIReceipt
@@ -95,6 +97,8 @@ def build_engine(policy: PolicyProfile) -> CascadeEngine:
         GroundednessHeuristicDetector(),
         SelfConsistencyDetector(),
         RegexPiiDetector(),
+        PromptInjectionDetector(),
+        UnsafeContentDetector(),
     ]
     cost_detectors = [ModelOverkillDetector(), SemanticCacheDetector()]
     return CascadeEngine(detectors, cost_detectors, policy)

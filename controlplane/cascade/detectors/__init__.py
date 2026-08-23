@@ -13,11 +13,14 @@ from controlplane.cascade.detectors.performance import (
     SelfConsistencyDetector,
 )
 from controlplane.cascade.detectors.responsibility import RegexPiiDetector
+from controlplane.cascade.detectors.safety import PromptInjectionDetector, UnsafeContentDetector
 
 __all__ = [
     "Detector",
     "CostDetector",
     "RegexPiiDetector",
+    "PromptInjectionDetector",
+    "UnsafeContentDetector",
     "GroundednessHeuristicDetector",
     "OverconfidenceDetector",
     "SelfConsistencyDetector",

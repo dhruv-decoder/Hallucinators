@@ -8,6 +8,28 @@ an op is unsupported, we fall back rather than crash.
 from __future__ import annotations
 
 import os
+import pathlib
+
+
+def load_dotenv(path: str = ".env") -> None:
+    """Load ``KEY=VALUE`` pairs from a local ``.env`` into the environment (existing vars win).
+
+    Dependency-free so the core has no new requirement. Used to pick up secrets like ``GROQ_API_KEY`` for the
+    optional real-model paths without ever committing them. Values may be quoted and may carry an inline
+    ``# comment``. Missing file is a no-op.
+    """
+    p = pathlib.Path(path)
+    if not p.exists():
+        return
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.split(" #", 1)[0].strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
 
 
 def pick_device(prefer: str | None = None) -> str:

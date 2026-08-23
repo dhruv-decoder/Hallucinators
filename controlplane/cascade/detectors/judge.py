@@ -6,18 +6,19 @@ i.e. on the ~1-3% of responses where cheaper checks left the axis genuinely unce
 well-prompted general LLM judge is competitive with (often better than) fine-tuned detectors, so it is the
 right thing to escalate *to*, not to run on everything.
 
-Two backends, auto-detected, so it works both in a real deployment and on a laptop:
+Backends are OpenAI-compatible and called directly over httpx (no heavy SDK):
 
-- **litellm** -- any hosted provider (OpenAI/Anthropic/Bedrock/…) when a provider key is set.
-- **Ollama**  -- a local open-weights model, no API key, when an Ollama server is reachable.
+- **Groq** -- free tier, OpenAI-compatible, very fast. Default judge model ``openai/gpt-oss-120b`` (verified
+  ~0.7s and correct on the verification prompt). Set ``GROQ_API_KEY`` (a local ``.env`` is auto-loaded).
+- **OpenAI** -- any GPT model when ``OPENAI_API_KEY`` is set.
+- **Ollama** -- a local open-weights model (default ``llama3.1:8b``) when an Ollama server is reachable.
 
-If neither is available the detector is simply absent (the factory does not add it) and the cascade stops at
+If none is available the detector is simply absent (the factory does not add it) and the cascade stops at
 T1 -- honestly, no fabricated judge. Cost and latency are real and feed both the stopping rule and the P&L.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import re
 import socket
@@ -28,21 +29,11 @@ from controlplane.pnl.pricing import Pricing
 
 _NUM = re.compile(r"\d+")
 
-
-_PROVIDER_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY")
-
-
-def _provider_key_present() -> bool:
-    return any(os.environ.get(k) for k in _PROVIDER_KEYS)
-
-
-def _default_judge_model() -> str:
-    """Pick a sensible free/cheap judge model from whichever provider key is set (Groq is free & fast)."""
-    if os.environ.get("CONTROLPLANE_JUDGE_MODEL"):
-        return os.environ["CONTROLPLANE_JUDGE_MODEL"]
-    if os.environ.get("GROQ_API_KEY") and not os.environ.get("OPENAI_API_KEY"):
-        return "groq/llama-3.3-70b-versatile"  # free tier via Groq, litellm-routed
-    return "gpt-4o-mini"
+# backend -> (base_url, api-key env var, default model). OpenAI-compatible /chat/completions.
+_HTTP_BACKENDS: dict[str, tuple[str, str, str]] = {
+    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY", "openai/gpt-oss-120b"),
+    "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY", "gpt-4o-mini"),
+}
 
 
 def _ollama_host() -> str:
@@ -59,6 +50,19 @@ def _ollama_reachable() -> bool:
         return False
 
 
+def _pick_backend() -> str:
+    """Choose a judge backend: forced override, then Groq/OpenAI by key, then a local Ollama, else none."""
+    forced = os.environ.get("CONTROLPLANE_JUDGE_BACKEND")
+    if forced:
+        return forced
+    for name, (_base, keyvar, _model) in _HTTP_BACKENDS.items():
+        if os.environ.get(keyvar):
+            return name
+    if _ollama_reachable():
+        return "ollama"
+    return "none"
+
+
 class LlmJudgeDetector(Detector):
     """A costly, high-information LLM verification of a response, gated by the VoI stopping rule (T2)."""
 
@@ -68,32 +72,23 @@ class LlmJudgeDetector(Detector):
     informativeness = 0.9
 
     def __init__(self, model: str | None = None, backend: str | None = None) -> None:
-        self.backend = backend or self._pick_backend()
+        self.backend = backend or _pick_backend()
         if model:
             self.model = model
-        elif self.backend == "ollama":
-            self.model = os.environ.get("CONTROLPLANE_JUDGE_MODEL", "llama3.1")
+        elif os.environ.get("CONTROLPLANE_JUDGE_MODEL"):
+            self.model = os.environ["CONTROLPLANE_JUDGE_MODEL"]
+        elif self.backend in _HTTP_BACKENDS:
+            self.model = _HTTP_BACKENDS[self.backend][2]
         else:
-            self.model = _default_judge_model()
-        # Real cost/latency the stopping rule weighs. Local (ollama) is ~$0; a hosted judge is priced.
-        self.est_cost_usd = 0.0 if self.backend == "ollama" else Pricing().cost(self.model, 400, 30)
-        self.est_latency_ms = 500.0
-
-    @staticmethod
-    def _pick_backend() -> str:
-        forced = os.environ.get("CONTROLPLANE_JUDGE_BACKEND")
-        if forced:
-            return forced
-        if importlib.util.find_spec("litellm") and _provider_key_present():
-            return "litellm"
-        if _ollama_reachable():
-            return "ollama"
-        return "none"
+            self.model = "llama3.1:8b"
+        # Real cost the stopping rule weighs: Groq free tier and local Ollama are ~$0; OpenAI is priced.
+        self.est_cost_usd = Pricing().cost(self.model, 400, 30) if self.backend == "openai" else 0.0
+        self.est_latency_ms = 800.0
 
     @classmethod
     def available(cls) -> tuple[bool, str]:
-        """(usable, backend). Cheap to call -- no model load, only a key check / short socket probe."""
-        backend = cls._pick_backend()
+        """(usable, backend). Cheap -- a key check / short socket probe, no model load."""
+        backend = _pick_backend()
         return backend not in ("none", ""), backend
 
     def _prompt(self, ctx: RequestContext) -> str:
@@ -107,19 +102,24 @@ class LlmJudgeDetector(Detector):
 
     def _call_backend(self, prompt: str) -> str:
         """Return the judge model's raw reply. Isolated so tests can monkeypatch it without a network call."""
-        if self.backend == "litellm":
-            import litellm
+        import httpx
 
-            resp = litellm.completion(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=8,
+        if self.backend in _HTTP_BACKENDS:
+            base, keyvar, _ = _HTTP_BACKENDS[self.backend]
+            r = httpx.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {os.environ.get(keyvar, '')}"},
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1024,
+                    "temperature": 0,
+                },
+                timeout=30.0,
             )
-            return resp["choices"][0]["message"]["content"]
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"].get("content") or ""
         if self.backend == "ollama":
-            import httpx
-
             r = httpx.post(
                 f"{_ollama_host()}/api/chat",
                 json={

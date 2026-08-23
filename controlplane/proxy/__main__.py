@@ -15,6 +15,9 @@ from controlplane.proxy.app import create_app
 
 
 def main() -> None:
+    from controlplane.runtime import load_dotenv
+
+    load_dotenv()  # pick up a local .env (e.g. GROQ_API_KEY) if present; real env vars still win
     host = os.environ.get("CONTROLPLANE_HOST", "127.0.0.1")
     # Cloud hosts (Render/Heroku/etc.) inject $PORT; fall back to our own var, then 8000.
     port = int(os.environ.get("PORT") or os.environ.get("CONTROLPLANE_PORT") or "8000")

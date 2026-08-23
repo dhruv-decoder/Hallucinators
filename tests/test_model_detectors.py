@@ -54,10 +54,10 @@ def test_hhem_abstains_without_context() -> None:
 
 
 def test_judge_parses_score_and_abstains_on_error(monkeypatch) -> None:
-    d = LlmJudgeDetector(backend="litellm", model="gpt-4o-mini")
+    d = LlmJudgeDetector(backend="groq", model="gpt-4o-mini")
     monkeypatch.setattr(d, "_call_backend", lambda prompt: "The answer scores 90 out of 100.")
     score, detail = d.assess(RequestContext(request_id="t", prompt="q", response="a", retrieved_context=["c"]))
-    assert score == 0.9 and detail["backend"] == "litellm"
+    assert score == 0.9 and detail["backend"] == "groq"
 
     def _boom(prompt):
         raise RuntimeError("no api key")
@@ -70,7 +70,7 @@ def test_judge_parses_score_and_abstains_on_error(monkeypatch) -> None:
 def test_voi_rule_climbs_to_the_judge_on_the_uncertain_tail(monkeypatch) -> None:
     # A confident, unhedged response leaves the performance axis uncertain at T0; the VoI rule should judge
     # the T2 judge worth buying, and the judge's verdict should raise the axis probability.
-    judge_det = LlmJudgeDetector(backend="litellm", model="gpt-4o-mini")
+    judge_det = LlmJudgeDetector(backend="groq", model="gpt-4o-mini")
     monkeypatch.setattr(judge_det, "_call_backend", lambda prompt: "95")
 
     from controlplane.cascade.detectors.performance import OverconfidenceDetector

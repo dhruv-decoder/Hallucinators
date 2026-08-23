@@ -45,15 +45,33 @@ def print_report(report: EvalReport) -> None:
         print(f"  {name:24s} ECE={ece:.3f}")
 
 
+def conformal_report(dataset) -> None:
+    """Print the conformal risk-control guarantee for the performance axis at several risk budgets."""
+    from controlplane.cascade.conformal import risk_controlled_threshold
+
+    engine = build_engine(PolicyProfile(id="eval@balanced"), use_models=False)
+    scores: list[float] = []
+    labels: list[bool] = []
+    for ex in dataset:
+        outcome = engine.run(ex.ctx).per_axis.get(Axis.PERFORMANCE)
+        scores.append(outcome.p_fail if outcome else 0.0)
+        labels.append(bool(ex.labels.get(Axis.PERFORMANCE, False)))
+    print("\nConformal risk control -- guaranteed escaped-failure rate (performance axis)")
+    for alpha in (0.30, 0.20, 0.10):
+        print(f"  alpha={alpha:.2f}:  {risk_controlled_threshold(scores, labels, alpha).statement()}")
+
+
 def main() -> None:
     # Pin heuristics-only so the reported numbers are reproducible regardless of locally-installed models
     # or a running judge backend. Model-backed detectors are measured on their own (labelled-data) track.
+    dataset = synthetic_labeled_dataset()
     report = run_harness(
         lambda: build_engine(PolicyProfile(id="eval@balanced"), use_models=False),
-        synthetic_labeled_dataset(),
+        dataset,
         tau=0.5,
     )
     print_report(report)
+    conformal_report(dataset)
 
 
 if __name__ == "__main__":

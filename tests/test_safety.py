@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from controlplane.cascade.detectors.bias import BiasHeuristicDetector
 from controlplane.cascade.detectors.safety import PromptInjectionDetector, UnsafeContentDetector
 from controlplane.core.types import RequestContext
 
@@ -42,4 +43,16 @@ def test_unsafe_content_fires_on_weapons_instructions() -> None:
 def test_unsafe_content_silent_on_normal_answer() -> None:
     d = UnsafeContentDetector()
     score, _ = d.assess(_ctx(response="Refunds are available within 30 days."))
+    assert score == 0.0
+
+
+def test_bias_fires_on_group_plus_loaded_language() -> None:
+    d = BiasHeuristicDetector()
+    score, detail = d.assess(_ctx(response="Women are less qualified for engineering roles."))
+    assert score > 0.5 and detail["bias"] is True
+
+
+def test_bias_silent_on_neutral_group_mention() -> None:
+    d = BiasHeuristicDetector()
+    score, _ = d.assess(_ctx(response="Our team includes talented women and men from many backgrounds."))
     assert score == 0.0

@@ -25,6 +25,7 @@ def test_factory_offline_is_heuristics_only() -> None:
         "regex_pii",
         "prompt_injection",
         "unsafe_content",
+        "bias_heuristic",
     }
 
 

@@ -23,6 +23,7 @@ import importlib.util
 import os
 
 from controlplane.cascade.detectors.base import CostDetector, Detector
+from controlplane.cascade.detectors.bias import BiasHeuristicDetector
 from controlplane.cascade.detectors.cost import ModelOverkillDetector, SemanticCacheDetector
 from controlplane.cascade.detectors.groundedness_model import HHEMGroundednessDetector
 from controlplane.cascade.detectors.judge import LlmJudgeDetector
@@ -66,6 +67,7 @@ def build_failure_detectors(
         RegexPiiDetector(),
         PromptInjectionDetector(),
         UnsafeContentDetector(),
+        BiasHeuristicDetector(),
     ]
 
     disabled = _models_disabled()

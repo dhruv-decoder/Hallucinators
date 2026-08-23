@@ -185,3 +185,40 @@ OpenAI request → upstream.generate() → OversightService.oversee():
 - **Concurrency.** Detectors are pure and run outside a lock; only the mutating section (ledger totals,
   recorder hash chain, thermostat window, SSE fan-out) is serialized, so parallel requests can't corrupt the
   chain. Run it with `make serve`; drive it with `make traffic`.
+
+## 15. Agentic trajectory oversight
+
+An agent step is treated as *just another monitored call*, so the same `CascadeEngine` runs per step; the
+auditor ([`controlplane/agent/auditor.py`](../controlplane/agent/auditor.py)) adds the signals that only exist
+across steps and decides continue / escalate / abort:
+
+- **compounding risk** — a running sum of per-step risk; crossing the policy `risk_budget` marks the run
+  unrecoverable. We do *not* abort on the first blip (early errors often self-correct); we abort on the
+  compounding one (the 2026 "unrecoverable vs first-error" finding).
+- **loops** — the same tool called with the same arguments (`AgentStep.signature`) yields no new information;
+  repeats above `loop_threshold` while uncertain trigger an abort. This is the clearest unrecoverable signal.
+- **waste-killer** — aborting stops executing the remaining planned steps, so their token cost is never spent
+  and is booked as `wasted_usd` saved (agent cost savings feeding the same self-funding P&L).
+
+Each executed step is written to the flight recorder as an ordinary receipt (`use_case="agent"`), so agent
+oversight shows up in the same live feed and audit trail. Endpoint: `POST /v1/oversight/agent-demo`; CLI:
+`make agent`. The scripted trajectory ([`agent/scenarios.py`](../controlplane/agent/scenarios.py)) compounds a
+hallucination and loops; the auditor aborts around step 2 and escalates, so the wrong answer never reaches the
+user.
+
+## 16. Layered safety detectors
+
+Following the 2026 consensus that safety is a *stack* of distinct classifiers, the responsibility axis carries
+three T0 detectors combined by the engine's noisy-OR: regex/Luhn **PII**, **prompt-injection** (an ingress
+gate reading the prompt and any tool observations — indirect injection), and **unsafe-content** (an egress
+moderation gate reading the response). All are honest heuristics with documented upgrades (PromptGuard-2,
+Llama Guard 4 / ShieldGemma-2). See [`cascade/detectors/safety.py`](../controlplane/cascade/detectors/safety.py).
+
+## 17. Compliance evidence pack
+
+Regulations differ by geography/industry and evolve, so nothing about a rule is hard-coded in detection;
+governance is policy-as-config and *evidence* is generated on demand from the tamper-evident receipts.
+[`controlplane/compliance/pack.py`](../controlplane/compliance/pack.py) maps recorded facts (decision counts,
+human escalations, blocks, chain-verification) onto concrete controls in the EU AI Act (Arts. 12/13/14/15/26/
+50), ISO/IEC 42001, and NIST AI RMF, and renders an auditor-readable Markdown pack. It is an evidence aid, not
+a certification — the disclaimer ships in every pack. Endpoints: `GET /v1/oversight/compliance[.md]`.

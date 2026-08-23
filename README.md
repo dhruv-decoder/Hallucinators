@@ -36,6 +36,17 @@ when the check's expected reduction in loss beats its own cost and latency. See
 - **Control-Tower dashboard** (`controlplane/proxy/static/`) — a live, single-file UI served by the proxy:
   the Oversight P&L going net-negative, the confidently-wrong quadrant, the adaptive thermostat, and a
   click-into-any-receipt drawer with the full value-of-information trace. `make serve`, then open the page.
+- **Agentic trajectory oversight** (`controlplane/agent/`) — the VoI cascade extended to a whole tool-calling
+  agent. It runs the three-axis check on every step *plus* trajectory-level signals (compounding risk, loops,
+  tool-call waste) and **aborts mid-run on the unrecoverable failure**, escalating to a human. The finale demo
+  (`make agent`) shows an agent compounding a hallucination and looping; the auditor stops it and books the
+  avoided steps as savings (the agent "waste-killer").
+- **Layered safety detectors** (`controlplane/cascade/detectors/safety.py`) — prompt-injection/jailbreak
+  (ingress) and unsafe-content (egress) checks on the responsibility axis, matching the 2026 layered-guardrail
+  consensus (upgrade paths: PromptGuard-2, Llama Guard 4 / ShieldGemma-2).
+- **Compliance evidence pack** (`controlplane/compliance/`) — maps the hash-chained receipts to concrete
+  **EU AI Act** (Arts. 12/13/14/15/26/50), **ISO/IEC 42001**, and **NIST AI RMF** controls, exported as JSON
+  or a downloadable Markdown pack. Governance stays policy-as-config; evidence is generated on demand.
 - **VoI decision engine** (`controlplane/cascade/voi.py`) — expected loss `= P(failure) x Cost(failure)`, the
   value-of-information of the next check, and the stopping rule that decides whether to climb a tier.
 - **Probability calibration** (`controlplane/cascade/calibration.py`) — Platt and isotonic (PAV)
@@ -138,6 +149,8 @@ controlplane/         # the Python package
   replay/             # What-If / Replay simulator (the proof engine)
   feedback/           # override -> recalibrate learning loop
   eval/               # labelled failure-injection harness + metrics + baselines
+  agent/              # agentic trajectory oversight (per-step cascade + compounding/loop/waste checks)
+  compliance/         # EU AI Act / ISO 42001 / NIST AI RMF evidence-pack generator
   proxy/              # The Tower: OpenAI-compatible gateway + oversight service + dashboard (static/)
   demo/               # end-to-end runnable demos
 tests/                # unit tests

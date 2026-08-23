@@ -34,6 +34,7 @@ from controlplane.core.types import (
 )
 from controlplane.pnl import PnlLedger
 from controlplane.proxy.actions import AppliedAction, apply_action
+from controlplane.proxy.jobs import Job, JobRunner
 from controlplane.proxy.upstream import Generation
 from controlplane.recorder import JsonlRecorder
 
@@ -128,6 +129,8 @@ class OversightService:
         self._subscribers = _Subscribers()
         self._lock = threading.Lock()
         self._request_seq = 0
+        self.jobs = JobRunner()
+        self.upstream = None  # set by the app so bulk-simulate can generate candidates
 
     # -- policy --------------------------------------------------------------------------------------
     @property
@@ -220,6 +223,31 @@ class OversightService:
             # The steps we never ran are money saved -> book into the self-funding ledger.
             self.ledger.total_cost_saved += rec.wasted_usd
         return rec.model_dump(mode="json")
+
+    # -- long-running jobs (progress + ETA) ---------------------------------------------------------
+    def start_benchmark(self, n: int = 2000, weekly_volume: int = 50_000) -> Job:
+        """Kick off the latency/throughput benchmark on a background thread; the UI polls its progress."""
+        from controlplane.proxy.benchmark import run_benchmark
+
+        return self.jobs.start("benchmark", total=n, target=lambda job: run_benchmark(job, n, weekly_volume))
+
+    def start_bulk_simulate(self, n: int = 40) -> Job:
+        """Replay the demo workload through the real pipeline ``n`` times, feeding the live feed + P&L."""
+        from controlplane.proxy.workload import demo_prompts
+
+        prompts = demo_prompts()
+        total = n * len(prompts)
+
+        def _run(job: Job) -> dict:
+            upstream = self.upstream
+            for _ in range(n):
+                for p in prompts:
+                    gen = upstream.generate(p["prompt"], p.get("model", "controlplane-sim"), use_case=p.get("use_case"))
+                    self.oversee(p["prompt"], gen)
+                    job.tick(1, message=f"processed {job.done + 1:,}/{total:,} interactions")
+            return {"processed": total, **self.summary()}
+
+        return self.jobs.start("simulate", total=total, target=_run)
 
     # -- UI feeds ------------------------------------------------------------------------------------
     def subscribe(self) -> queue.Queue[VoIReceipt]:

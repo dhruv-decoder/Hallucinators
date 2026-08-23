@@ -191,7 +191,9 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
     @app.get("/healthz")
     def healthz() -> dict:
-        return {"ok": True, "upstream": upstream.name}
+        from controlplane.cascade.detectors.factory import active_models
+
+        return {"ok": True, "upstream": upstream.name, "models": active_models()}
 
     return app
 

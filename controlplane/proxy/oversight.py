@@ -19,15 +19,10 @@ import queue
 import threading
 from dataclasses import dataclass, field
 
-from controlplane.cascade.detectors import (
-    GroundednessHeuristicDetector,
-    ModelOverkillDetector,
-    OverconfidenceDetector,
-    PromptInjectionDetector,
-    RegexPiiDetector,
-    SelfConsistencyDetector,
-    SemanticCacheDetector,
-    UnsafeContentDetector,
+from controlplane.cascade.detectors.factory import (
+    active_models,
+    build_cost_detectors,
+    build_failure_detectors,
 )
 from controlplane.cascade.engine import CascadeEngine
 from controlplane.cascade.thermostat import Thermostat, risk_score
@@ -119,17 +114,11 @@ class OversightService:
         recorder_path: str | None = "recorder_log.jsonl",
         use_thermostat: bool = True,
     ) -> None:
-        # The cache detector is stateful (it remembers seen prompts), so one shared instance.
+        # The factory picks the strongest detector stack available here (heuristics offline; HHEM / Presidio
+        # / a T2 LLM judge when their deps or a backend are present). The cost cache is stateful -> one shared.
         self.engine = CascadeEngine(
-            detectors=[
-                OverconfidenceDetector(),
-                GroundednessHeuristicDetector(),
-                SelfConsistencyDetector(),
-                RegexPiiDetector(),
-                PromptInjectionDetector(),
-                UnsafeContentDetector(),
-            ],
-            cost_detectors=[ModelOverkillDetector(), SemanticCacheDetector()],
+            detectors=build_failure_detectors(),
+            cost_detectors=build_cost_detectors(),
         )
         self.ledger = PnlLedger()
         self.recorder = JsonlRecorder(path=recorder_path)
@@ -260,4 +249,5 @@ class OversightService:
             "chain_valid": self.recorder.verify_chain(),
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
+            "models": active_models(),
         }

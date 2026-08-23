@@ -22,13 +22,7 @@ from __future__ import annotations
 import uuid
 
 from controlplane.agent.types import AgentStep, StepVerdict, TrajectoryReceipt
-from controlplane.cascade.detectors import (
-    GroundednessHeuristicDetector,
-    OverconfidenceDetector,
-    PromptInjectionDetector,
-    RegexPiiDetector,
-    UnsafeContentDetector,
-)
+from controlplane.cascade.detectors.factory import build_failure_detectors
 from controlplane.cascade.engine import CascadeEngine
 from controlplane.core.types import Axis, PolicyProfile, RequestContext
 from controlplane.pnl.pricing import Pricing
@@ -36,15 +30,12 @@ from controlplane.recorder import JsonlRecorder
 
 
 def _default_engine(policy: PolicyProfile) -> CascadeEngine:
-    """A per-step engine. Groundedness checks each step's claim against the tool observation it came from."""
+    """A per-step engine. Groundedness checks each step's claim against the tool observation it came from.
+
+    Uses the shared factory, so an agent step gets the same model-backed detectors as an ordinary request
+    when they are available (self-consistency is dropped -- an agent step has no resample set)."""
     return CascadeEngine(
-        detectors=[
-            OverconfidenceDetector(),
-            GroundednessHeuristicDetector(),
-            RegexPiiDetector(),
-            PromptInjectionDetector(),
-            UnsafeContentDetector(),
-        ],
+        detectors=[d for d in build_failure_detectors() if d.name != "self_consistency"],
         policy=policy,
     )
 

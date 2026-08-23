@@ -46,8 +46,10 @@ def print_report(report: EvalReport) -> None:
 
 
 def main() -> None:
+    # Pin heuristics-only so the reported numbers are reproducible regardless of locally-installed models
+    # or a running judge backend. Model-backed detectors are measured on their own (labelled-data) track.
     report = run_harness(
-        lambda: build_engine(PolicyProfile(id="eval@balanced")),
+        lambda: build_engine(PolicyProfile(id="eval@balanced"), use_models=False),
         synthetic_labeled_dataset(),
         tau=0.5,
     )

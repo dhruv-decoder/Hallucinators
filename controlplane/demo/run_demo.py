@@ -17,16 +17,7 @@ The sample requests are deliberately chosen to exercise every path:
 
 from __future__ import annotations
 
-from controlplane.cascade.detectors import (
-    GroundednessHeuristicDetector,
-    ModelOverkillDetector,
-    OverconfidenceDetector,
-    PromptInjectionDetector,
-    RegexPiiDetector,
-    SelfConsistencyDetector,
-    SemanticCacheDetector,
-    UnsafeContentDetector,
-)
+from controlplane.cascade.detectors.factory import build_cost_detectors, build_failure_detectors
 from controlplane.cascade.engine import CascadeEngine
 from controlplane.core.types import PolicyProfile, RequestContext, VoIReceipt
 from controlplane.pnl import PnlLedger
@@ -90,18 +81,18 @@ def sample_requests() -> list[RequestContext]:
     ]
 
 
-def build_engine(policy: PolicyProfile) -> CascadeEngine:
-    """Wire up the detectors and the engine. The cache detector is stateful, so share one instance."""
-    detectors = [
-        OverconfidenceDetector(),
-        GroundednessHeuristicDetector(),
-        SelfConsistencyDetector(),
-        RegexPiiDetector(),
-        PromptInjectionDetector(),
-        UnsafeContentDetector(),
-    ]
-    cost_detectors = [ModelOverkillDetector(), SemanticCacheDetector()]
-    return CascadeEngine(detectors, cost_detectors, policy)
+def build_engine(policy: PolicyProfile, use_models: bool = True) -> CascadeEngine:
+    """Wire up the detector stack and the engine.
+
+    ``use_models=True`` (default) uses the best-available stack (model-backed detectors + a T2 judge when
+    present). The eval harness passes ``use_models=False`` to pin heuristics-only, so ``make eval`` is
+    reproducible regardless of what happens to be installed or running locally.
+    """
+    if use_models:
+        detectors = build_failure_detectors()
+    else:
+        detectors = build_failure_detectors(use_hhem=False, use_presidio=False, use_judge=False)
+    return CascadeEngine(detectors, build_cost_detectors(), policy)
 
 
 def _print_receipt(receipt: VoIReceipt) -> None:

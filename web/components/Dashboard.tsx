@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Crosshair, Cpu, Gauge, History, LayoutGrid, LifeBuoy, Rss, ScrollText, Wallet, Workflow, X,
+  Crosshair, Cpu, Gauge, History, Info, LayoutGrid, LifeBuoy, MousePointerClick, Play,
+  Rss, ScrollText, Sparkles, Wallet, Workflow, X,
 } from "lucide-react";
 import { AgentReceipt, api, ControlRow, Receipt, Scenario, Summary } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
@@ -74,6 +75,10 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
     setBusy(false);
   };
 
+  const [guide, setGuide] = useState(false);
+  useEffect(() => { try { setGuide(localStorage.getItem("cp-guide") !== "seen"); } catch {} }, []);
+  const dismissGuide = () => { setGuide(false); try { localStorage.setItem("cp-guide", "seen"); } catch {} };
+
   const incidents = (summary?.by_action?.block ?? 0) + (summary?.by_action?.escalate ?? 0);
 
   return (
@@ -125,11 +130,15 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
               {Object.values(summary.policies).map((p) => <option key={p}>{p}</option>)}
             </select>
           )}
-          <button className="btn-primary" disabled={busy} onClick={sendTraffic}>{busy ? "running…" : "▶ Send demo traffic"}</button>
+          <button className="btn-primary inline-flex items-center gap-1.5" disabled={busy} onClick={sendTraffic}
+            title="Runs 9 realistic requests through the oversight engine so the dashboard fills with live decisions">
+            <Play size={14} />{busy ? "running…" : "Send demo traffic"}
+          </button>
         </header>
 
         <main className="mx-auto w-full max-w-[1480px] p-6">
-          {view === "overview" && <Overview summary={summary} net={net} receipts={receipts} onOpen={setDrawer} />}
+          {guide && <Onboard onDismiss={dismissGuide} onSend={sendTraffic} busy={busy} />}
+          {view === "overview" && <Overview summary={summary} net={net} receipts={receipts} onOpen={setDrawer} onSend={sendTraffic} busy={busy} />}
           {view === "feed" && <Feed receipts={receipts} onOpen={setDrawer} />}
           {view === "quadrant" && <Quadrant receipts={receipts} />}
           {view === "pnl" && <PnlView summary={summary} net={net} />}
@@ -164,8 +173,60 @@ function FeedRow({ r, onOpen }: { r: Receipt; onOpen: (r: Receipt) => void }) {
 }
 
 /* ---- views ---- */
-function Overview({ summary, net, receipts, onOpen }: { summary: Summary | null; net: number[]; receipts: Receipt[]; onOpen: (r: Receipt) => void }) {
+function Onboard({ onDismiss, onSend, busy }: { onDismiss: () => void; onSend: () => void; busy: boolean }) {
+  const steps = [
+    { icon: Play, t: "Send demo traffic", d: "populate the tower with real overseen requests" },
+    { icon: MousePointerClick, t: "Open any decision", d: "see its verdict and value-of-information trace" },
+    { icon: Sparkles, t: "Explore the panels", d: "P&L, latency, agents, compliance — each has a Run button" },
+  ];
+  return (
+    <div className="mb-4 flex items-center gap-4 rounded-xl border border-line bg-panel px-4 py-3 max-md:flex-col max-md:items-start" style={{ boxShadow: "var(--shadow)" }}>
+      <div className="flex items-center gap-2 whitespace-nowrap font-semibold"><Sparkles size={16} style={{ color: "var(--accent)" }} /> You&rsquo;re in the live app</div>
+      <div className="flex flex-1 flex-wrap items-center gap-x-5 gap-y-1">
+        {steps.map((s, i) => { const Icon = s.icon; return (
+          <span key={s.t} className="inline-flex items-center gap-1.5 text-[13px] text-muted">
+            <span className="num text-faint">{i + 1}</span><Icon size={13} style={{ color: "var(--accent)" }} />
+            <b className="text-ink">{s.t}</b> — {s.d}
+          </span>
+        ); })}
+      </div>
+      <button className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap" disabled={busy} onClick={onSend}><Play size={13} />Try it</button>
+      <button className="btn" onClick={onDismiss} title="Dismiss"><X size={14} /></button>
+    </div>
+  );
+}
+
+function GetStarted({ onSend, busy }: { onSend: () => void; busy: boolean }) {
+  const steps = [
+    { n: "1", t: "Send demo traffic", d: "Nine realistic support/agent requests run through the value-of-information cascade — most clear instantly, a few climb to a model or a human." },
+    { n: "2", t: "Watch the P&L go negative", d: "Cost-axis savings (route-downs, cache) pay for the safety checks — oversight with a negative price tag." },
+    { n: "3", t: "Drill into any decision", d: "Every response has a signed receipt: the per-axis verdict, which checks ran and why, and the action taken." },
+  ];
+  return (
+    <div className="mx-auto max-w-[860px]">
+      <div className="card flex flex-col items-center gap-3 py-12 text-center" style={{ background: "radial-gradient(700px 220px at 50% -10%, var(--accent-dim), var(--grad-1))" }}>
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}><Play size={22} /></div>
+        <h2 className="text-2xl font-semibold tracking-tight">Start the live tower</h2>
+        <p className="max-w-[520px] text-muted">This is the real oversight engine — nothing is pre-computed. Send a burst of demo traffic and the dashboard fills with live decisions you can inspect.</p>
+        <button className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-[15px]" disabled={busy} onClick={onSend}><Play size={16} />{busy ? "running…" : "Send demo traffic"}</button>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-3 max-md:grid-cols-1">
+        {steps.map((s) => (
+          <div key={s.n} className="card">
+            <div className="num mb-1.5 text-sm font-semibold" style={{ color: "var(--accent)" }}>{s.n}</div>
+            <h3 className="font-semibold">{s.t}</h3>
+            <p className="mt-1 text-[13px] text-muted">{s.d}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-faint"><Info size={12} /> Everything is real and reproducible — see the <b className="text-muted">Getting started</b> panel for the one-line integration.</p>
+    </div>
+  );
+}
+
+function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: Summary | null; net: number[]; receipts: Receipt[]; onOpen: (r: Receipt) => void; onSend: () => void; busy: boolean }) {
   const s = summary;
+  if (receipts.length === 0) return <GetStarted onSend={onSend} busy={busy} />;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-6 gap-3 max-xl:grid-cols-3">

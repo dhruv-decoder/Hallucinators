@@ -1,33 +1,42 @@
 import type { Config } from "tailwindcss";
 
-// Control-tower palette: near-black slate, one signal-cyan accent, aviation status colours.
+// Colors resolve to CSS variables (defined in globals.css) so the same classes work in dark + light.
+const v = (name: string) => `var(--${name})`;
+
 const config: Config = {
+  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        bg: { DEFAULT: "#0a0c10", 2: "#0e1117" },
-        panel: { DEFAULT: "#12161d", 2: "#161b23" },
-        line: { DEFAULT: "#222a35", 2: "#2b3543" },
-        ink: "#e8eef5",
-        muted: "#93a1b1",
-        faint: "#6b7684",
-        accent: { DEFAULT: "#46d9e6", dim: "#1c3a41" },
-        pass: "#3fb950",
-        annotate: "#58a6ff",
-        repair: "#bc8cff",
-        escalate: "#d9a221",
-        block: "#f85149",
+        bg: { DEFAULT: v("bg"), 2: v("bg-2") },
+        panel: { DEFAULT: v("panel"), 2: v("panel-2") },
+        line: { DEFAULT: v("line"), 2: v("line-2") },
+        ink: v("ink"),
+        muted: v("muted"),
+        faint: v("faint"),
+        accent: { DEFAULT: v("accent"), dim: v("accent-dim"), ink: v("accent-ink") },
+        pass: v("pass"),
+        annotate: v("annotate"),
+        repair: v("repair"),
+        escalate: v("escalate"),
+        block: v("block"),
       },
       fontFamily: {
-        sans: ["ui-sans-serif", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Inter", "sans-serif"],
+        sans: ["Inter", "ui-sans-serif", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "JetBrains Mono", "Menlo", "monospace"],
       },
       borderRadius: { xl: "12px" },
       keyframes: {
         slidein: { from: { transform: "translateY(8px)", opacity: "0" }, to: { transform: "translateY(0)", opacity: "1" } },
+        fadeup: { from: { transform: "translateY(14px)", opacity: "0" }, to: { transform: "translateY(0)", opacity: "1" } },
+        pulseglow: { "0%,100%": { opacity: "0.6" }, "50%": { opacity: "1" } },
       },
-      animation: { slidein: "slidein 0.2s ease-out" },
+      animation: {
+        slidein: "slidein .2s ease-out",
+        fadeup: "fadeup .5s cubic-bezier(.2,.7,.2,1) both",
+        pulseglow: "pulseglow 2.4s ease-in-out infinite",
+      },
     },
   },
   plugins: [],

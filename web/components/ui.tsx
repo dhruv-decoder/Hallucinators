@@ -26,12 +26,9 @@ export function Kpi({ label, value, tone, foot, info }: { label: string; value: 
   );
 }
 
-const BADGE_BG: Record<string, string> = {
-  pass: "bg-[#0f2a1a] text-pass", annotate: "bg-[#0d2136] text-annotate", auto_repair: "bg-[#1c1533] text-repair",
-  escalate: "bg-[#2a2410] text-escalate", block: "bg-[#2b1315] text-block",
-};
 export function Badge({ action }: { action: string }) {
-  return <span className={cn("badge", BADGE_BG[action] || "bg-panel text-muted")}>{action.replace("_", "-")}</span>;
+  // .badge-<action> classes live in globals.css and adapt to light/dark via color-mix.
+  return <span className={cn("badge", `badge-${action}`)}>{action.replace("_", "-")}</span>;
 }
 
 export function ProgressBar({ progress, label }: { progress: number; label?: string }) {

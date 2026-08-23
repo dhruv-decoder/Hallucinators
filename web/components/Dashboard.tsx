@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Crosshair, Cpu, Gauge, History, LayoutGrid, LifeBuoy, Play, Rss, ScrollText, Wallet, Workflow, X,
+  Crosshair, Cpu, Gauge, History, LayoutGrid, LifeBuoy, Rss, ScrollText, Wallet, Workflow, X,
 } from "lucide-react";
 import { AgentReceipt, api, ControlRow, Receipt, Scenario, Summary } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, Card, Kpi, ProgressBar, toast, Toaster } from "./ui";
-import { Bars, QuadrantChart, Sparkline } from "./charts";
+import { QuadrantChart, Sparkline } from "./charts";
+import { ThemeToggle } from "./theme";
 
 type View = "overview" | "feed" | "quadrant" | "pnl" | "benchmark" | "replay" | "agents" | "compliance" | "detectors" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
@@ -32,9 +33,7 @@ const TITLES: Record<View, [string, string]> = {
   detectors: ["Detectors & models", "The tiered stack: cheap first, model on the tail"],
   help: ["Getting started", "What this is and how to read it"],
 };
-const LIVE = new Set<View>(["overview", "feed", "quadrant", "pnl"]);
-
-export default function Dashboard() {
+export default function Dashboard({ onHome }: { onHome?: () => void }) {
   const [view, setView] = useState<View>("overview");
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [net, setNet] = useState<number[]>([]);
@@ -81,12 +80,12 @@ export default function Dashboard() {
     <div className="grid min-h-screen grid-cols-[232px_1fr] max-lg:grid-cols-[64px_1fr]">
       {/* sidebar */}
       <aside className="sticky top-0 flex h-screen flex-col gap-1 overflow-auto border-r border-line bg-bg-2 p-3">
-        <div className="flex items-center gap-2.5 px-2.5 pb-4 pt-1.5">
-          <div className="relative h-7 w-7 flex-none rounded-[7px] bg-gradient-to-br from-accent to-[#2b7f88] shadow-[0_0_18px_#46d9e655]">
-            <div className="absolute inset-2 rounded-[3px] border-2 border-[#06121488]" />
+        <button onClick={onHome} title="Back to home" className="flex items-center gap-2.5 px-2.5 pb-4 pt-1.5 text-left">
+          <div className="relative h-7 w-7 flex-none rounded-[7px]" style={{ background: "linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #0a3))", boxShadow: "var(--glow)" }}>
+            <div className="absolute inset-2 rounded-[3px] border-2" style={{ borderColor: "color-mix(in srgb, var(--accent-ink) 55%, transparent)" }} />
           </div>
           <div className="max-lg:hidden"><b className="text-sm">ControlPlane</b><small className="block text-[11px] text-faint">The Tower</small></div>
-        </div>
+        </button>
         {NAV.map((g) => (
           <div key={g.group}>
             <div className="px-3 pb-1.5 pt-3.5 text-[10px] uppercase tracking-wider text-faint max-lg:hidden">{g.group}</div>
@@ -110,15 +109,16 @@ export default function Dashboard() {
 
       {/* main */}
       <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-line bg-bg/90 px-6 py-3 backdrop-blur">
+        <header className="glass sticky top-0 z-10 flex items-center gap-2.5 border-b border-line px-6 py-3">
           <div>
             <div className="text-[15px] font-semibold">{TITLES[view][0]}</div>
             <div className="text-xs text-faint">{TITLES[view][1]}</div>
           </div>
           <span className="flex-1" />
-          <span className="pill" title="Which detectors are model-backed vs heuristic">
+          <span className="pill max-md:hidden" title="Which detectors are model-backed vs heuristic">
             models <b className="text-ink">{summary?.models?.groundedness ?? "—"} · judge:{summary?.models?.judge ?? "off"}</b>
           </span>
+          <ThemeToggle />
           {summary && (
             <select className="btn" value={summary.active_policy}
               onChange={(e) => { const k = Object.entries(summary.policies).find(([, v]) => v === e.target.value)?.[0]; if (k) api.setPolicy(k).then(() => toast("Policy switched", e.target.value, "ok")); }}>
@@ -185,7 +185,7 @@ function Overview({ summary, net, receipts, onOpen }: { summary: Summary | null;
           </div>
         </Card>
       </div>
-      <div className="rounded-xl border border-dashed border-line-2 bg-[#0d141c] p-4">
+      <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4">
         <h4 className="mb-2 text-[13px] text-accent">What am I looking at?</h4>
         <p className="text-sm text-muted">ControlPlane sits in front of any model. For every response it decides <b className="text-ink">how much verification that response is worth</b> — buying the cheapest signal that could change the decision first, and letting cost-axis savings pay for the safety checks. Most responses clear instantly at the free tier; only the uncertain, high-stakes tail climbs to costly checks or a human. New here? Open <b className="text-ink">Getting started</b>.</p>
       </div>
@@ -233,7 +233,7 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
         <Kpi label="Net" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : ""} />
       </div>
       <Card title="Cumulative net"><Sparkline series={net} /></Card>
-      <div className="rounded-xl border border-dashed border-line-2 bg-[#0d141c] p-4">
+      <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4">
         <h4 className="mb-2 text-[13px] text-accent">Why can oversight be cheaper than nothing?</h4>
         <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer — routing an easy question to a small model, serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings win, the net goes negative: safety <i>and</i> a lower bill. Prices are sourced (docs/EVIDENCE.md).</p>
       </div>
@@ -288,7 +288,7 @@ function Benchmark() {
                 <span className="text-muted">cleared @ T0</span><span className="num">{res.pct_cleared_at_t0}%</span>
               </div>
             </Card>
-            <div className="rounded-xl border border-dashed border-line-2 bg-[#0d141c] p-4 text-sm text-muted">
+            <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
               <h4 className="mb-2 text-[13px] text-accent">Reading</h4>
               Sub-millisecond added latency on the common path and {res.pct_cleared_at_t0}% cleared at the free tier means the safe majority is never slowed. {res.judge_note}.
             </div>
@@ -311,7 +311,7 @@ function Replay() {
             <th className="border-b border-line p-2.5">scenario</th><th className="border-b border-line p-2.5 text-right">residual risk</th>
             <th className="border-b border-line p-2.5 text-right">risk ↓</th><th className="border-b border-line p-2.5 text-right">net $</th><th className="border-b border-line p-2.5 text-right">escalations</th></tr></thead>
           <tbody>{rows.map((s) => (
-            <tr key={s.name}><td className="border-b border-line p-2.5">{s.name}{s.self_funding && <span className="badge ml-2 bg-[#0f2a1a] text-pass">self-funding</span>}</td>
+            <tr key={s.name}><td className="border-b border-line p-2.5">{s.name}{s.self_funding && <span className="badge badge-pass ml-2">self-funding</span>}</td>
               <td className="num border-b border-line p-2.5 text-right">{s.residual_risk.toFixed(4)}</td>
               <td className="num border-b border-line p-2.5 text-right">{s.risk_reduction_pct.toFixed(0)}%</td>
               <td className={`num border-b border-line p-2.5 text-right ${s.net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(s.net_usd)}</td>
@@ -344,7 +344,7 @@ function Agents() {
                 </div>
               ); })}
           </div>
-          <div className="mt-3.5 rounded-xl border border-dashed border-line-2 bg-[#0d141c] p-4 text-sm text-muted">
+          <div className="mt-3.5 rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
             <h4 className="mb-1 text-[13px]" style={{ color: r.aborted_at != null ? "#d9a221" : "#3fb950" }}>{r.final_action.toUpperCase()}</h4>
             {r.summary}. Executed {r.n_steps_executed}/{r.n_steps_planned} steps · {r.wasted_usd > 0 ? `saved ${usd(r.wasted_usd)} in avoided agent spend` : ""} · the wrong answer never reached the user.
           </div>
@@ -370,7 +370,7 @@ function Compliance() {
           <tbody>{p.controls.map((c, i) => (
             <tr key={i}><td className="border-b border-line p-2.5">{c.framework}</td><td className="border-b border-line p-2.5">{c.control}</td>
               <td className="border-b border-line p-2.5 text-xs text-muted">{c.evidence}</td>
-              <td className="border-b border-line p-2.5"><span className={`badge ${c.status === "evidenced" ? "bg-[#0f2a1a] text-pass" : "bg-[#2a2410] text-escalate"}`}>{c.status}</span></td></tr>))}
+              <td className="border-b border-line p-2.5"><span className={`badge ${c.status === "evidenced" ? "badge-pass" : "badge-escalate"}`}>{c.status}</span></td></tr>))}
           </tbody>
         </table>
       )}
@@ -410,7 +410,7 @@ function Help() {
     <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
       <Card title="The one-line integration">
         <p className="mb-2 text-[12.5px] text-muted">Point any OpenAI client at The Tower — nothing else changes:</p>
-        <pre className="overflow-auto rounded-lg border border-line bg-bg-2 p-3 font-mono text-xs text-[#b9c6d6]">{`client = OpenAI(
+        <pre className="code">{`client = OpenAI(
   base_url="http://localhost:8000/v1",
   api_key="anything",
 )`}</pre>
@@ -470,8 +470,8 @@ function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () 
             <div className="mt-1 h-1.5 overflow-hidden rounded bg-[#0e1620]"><div className="h-full" style={{ width: `${o.p_fail * 100}%`, background: AXIS_COLOR[a as keyof typeof AXIS_COLOR] }} /></div></div>
         ))}
         <h4 className="mb-1.5 mt-4 text-[13px]">Value-of-information trace</h4>
-        <pre className="overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-bg-2 p-3 font-mono text-xs text-[#b9c6d6]">{trace}</pre>
-        {r.repaired_output && <><h4 className="mb-1.5 mt-4 text-[13px]">Delivered to user</h4><pre className="overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-bg-2 p-3 font-mono text-xs text-[#b9c6d6]">{r.repaired_output}</pre></>}
+        <pre className="code whitespace-pre-wrap">{trace}</pre>
+        {r.repaired_output && <><h4 className="mb-1.5 mt-4 text-[13px]">Delivered to user</h4><pre className="code whitespace-pre-wrap">{r.repaired_output}</pre></>}
         <h4 className="mb-1.5 mt-4 text-[13px]">Tamper-evident chain</h4>
         <div className="break-all font-mono text-[10.5px] text-faint">self {r.hash_self}<br />prev {r.hash_prev || "genesis"}</div>
       </aside>

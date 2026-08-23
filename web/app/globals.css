@@ -2,23 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
+/* ---- theme tokens (mission-control cyan) : dark default + light override ---- */
+:root, .dark {
+  --bg: #0a0c10; --bg-2: #0e1117; --panel: #12161d; --panel-2: #161b23;
+  --line: #222a35; --line-2: #2b3543;
+  --ink: #e8eef5; --muted: #93a1b1; --faint: #6b7684;
+  --accent: #46d9e6; --accent-ink: #04181b; --accent-dim: #12303a;
+  --pass: #3fb950; --annotate: #58a6ff; --repair: #bc8cff; --escalate: #d9a221; --block: #f85149;
+  --grad-1: #12161d; --grad-2: #14191f;
+  --glow: 0 0 20px rgba(70,217,230,.28);
+  --shadow: 0 10px 34px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+.light {
+  --bg: #f6f8fb; --bg-2: #ffffff; --panel: #ffffff; --panel-2: #f3f6f9;
+  --line: #e4e9f0; --line-2: #d3dce6;
+  --ink: #0d1520; --muted: #566374; --faint: #8592a1;
+  --accent: #0a97ac; --accent-ink: #ffffff; --accent-dim: #d7f2f6;
+  --pass: #1a7f37; --annotate: #0969da; --repair: #8250df; --escalate: #9a6700; --block: #cf222e;
+  --grad-1: #ffffff; --grad-2: #f6f8fb;
+  --glow: 0 0 20px rgba(10,151,172,.18);
+  --shadow: 0 10px 30px rgba(20,40,60,.10);
+  color-scheme: light;
+}
+
 html, body { height: 100%; }
 body {
-  @apply bg-bg text-ink font-sans;
-  background-image: radial-gradient(1100px 500px at 78% -8%, rgba(70, 217, 230, 0.06), transparent);
+  @apply bg-bg text-ink font-sans antialiased;
+  background-image: radial-gradient(1100px 520px at 80% -10%, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
 }
-::selection { background: rgba(70, 217, 230, 0.27); }
-* { scrollbar-width: thin; scrollbar-color: #2b3543 transparent; }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+a { color: inherit; text-decoration: none; }
 
 @layer components {
-  .card { @apply rounded-xl border border-line bg-gradient-to-b from-panel to-panel-2 p-[18px]; }
+  .card { @apply rounded-xl border border-line p-[18px]; background: linear-gradient(180deg, var(--grad-1), var(--grad-2)); }
   .pill { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-muted whitespace-nowrap; }
-  .btn { @apply rounded-lg border border-line-2 bg-panel px-3 py-2 text-sm font-medium text-ink transition hover:border-accent hover:text-accent disabled:opacity-50; }
-  .btn-primary { @apply rounded-lg border border-accent bg-accent px-3 py-2 text-sm font-semibold text-[#04181b] transition hover:brightness-110; }
-  .badge { @apply inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide; }
+  .btn { @apply rounded-lg border border-line-2 bg-panel px-3 py-2 text-sm font-medium text-ink transition; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .5; }
+  .btn-primary { @apply rounded-lg px-3.5 py-2 text-sm font-semibold transition; background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+  .btn-primary:hover { filter: brightness(1.08); box-shadow: var(--glow); }
   .kpi { @apply rounded-xl border border-line bg-panel p-3.5; }
-  .navitem { @apply flex cursor-pointer select-none items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-muted transition hover:bg-panel hover:text-ink; }
-  .navitem-active { @apply border-[#2f5b62] bg-accent-dim text-ink; }
+  .navitem { @apply flex cursor-pointer select-none items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-muted transition; }
+  .navitem:hover { @apply text-ink; background: var(--panel); }
+  .navitem-active { color: var(--ink); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .num { @apply font-mono tabular-nums; }
+  .glass { background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); }
+  .badge { @apply inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide; }
+  .badge-pass { color: var(--pass); background: color-mix(in srgb, var(--pass) 15%, transparent); }
+  .badge-annotate { color: var(--annotate); background: color-mix(in srgb, var(--annotate) 15%, transparent); }
+  .badge-auto_repair { color: var(--repair); background: color-mix(in srgb, var(--repair) 15%, transparent); }
+  .badge-escalate { color: var(--escalate); background: color-mix(in srgb, var(--escalate) 16%, transparent); }
+  .badge-block { color: var(--block); background: color-mix(in srgb, var(--block) 16%, transparent); }
+  .code { @apply overflow-auto rounded-lg border border-line p-3 font-mono text-xs; background: var(--bg-2); color: color-mix(in srgb, var(--ink) 80%, var(--muted)); }
+  .hairline { border-color: var(--line); }
 }

@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body { height: 100%; }
+body {
+  @apply bg-bg text-ink font-sans;
+  background-image: radial-gradient(1100px 500px at 78% -8%, rgba(70, 217, 230, 0.06), transparent);
+}
+::selection { background: rgba(70, 217, 230, 0.27); }
+* { scrollbar-width: thin; scrollbar-color: #2b3543 transparent; }
+
+@layer components {
+  .card { @apply rounded-xl border border-line bg-gradient-to-b from-panel to-panel-2 p-[18px]; }
+  .pill { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-muted whitespace-nowrap; }
+  .btn { @apply rounded-lg border border-line-2 bg-panel px-3 py-2 text-sm font-medium text-ink transition hover:border-accent hover:text-accent disabled:opacity-50; }
+  .btn-primary { @apply rounded-lg border border-accent bg-accent px-3 py-2 text-sm font-semibold text-[#04181b] transition hover:brightness-110; }
+  .badge { @apply inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide; }
+  .kpi { @apply rounded-xl border border-line bg-panel p-3.5; }
+  .navitem { @apply flex cursor-pointer select-none items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-muted transition hover:bg-panel hover:text-ink; }
+  .navitem-active { @apply border-[#2f5b62] bg-accent-dim text-ink; }
+  .num { @apply font-mono tabular-nums; }
+}

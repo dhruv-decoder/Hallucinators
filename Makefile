@@ -1,6 +1,6 @@
 # Blessed entry points. Everything a stranger needs to run the project lives here.
 
-.PHONY: help install install-serve test demo whatif thermostat eval serve traffic lint clean
+.PHONY: help install install-serve test demo whatif thermostat agent eval eval-real serve traffic web-install web-dev web-build lint clean
 
 help:
 	@echo "make install    - create .venv and install the core engine + dev tools"
@@ -12,8 +12,10 @@ help:
 	@echo "make agent      - run the agentic finale (an agent compounds a hallucination; auditor aborts it)"
 	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
 	@echo "make eval-real  - eval on a real benchmark (HaluEval); add ARGS='--models' for HHEM"
-	@echo "make serve      - run The Tower: OpenAI-compatible proxy + Control-Tower dashboard (:8000)"
+	@echo "make serve      - run The Tower: proxy + dashboard (:8000); serves the React UI if web/out exists, else lite"
 	@echo "make traffic    - fire the scripted demo workload at a running Tower (one-line base_url swap)"
+	@echo "make web-build  - build the Next.js UI to a static export so 'make serve' ships it as ONE service"
+	@echo "make web-dev    - run the Next.js UI with hot reload (:3000), proxying /api to the backend"
 	@echo "make lint       - run ruff over the codebase"
 	@echo "make clean      - remove caches and build artifacts"
 
@@ -52,6 +54,16 @@ serve:
 
 traffic:
 	python -m controlplane.proxy.traffic
+
+web-install:
+	cd web && npm ci
+
+web-dev:
+	cd web && npm run dev
+
+web-build:
+	cd web && NEXT_OUTPUT=export NEXT_PUBLIC_API_BASE= npm run build
+	@echo "Built web/out -- 'make serve' now serves the React product UI at /"
 
 lint:
 	ruff check controlplane tests

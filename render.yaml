@@ -1,15 +1,12 @@
-# One-click deploy of The Tower to Render's free tier (a single web service; no GPU needed).
-# Render injects $PORT, which controlplane.proxy reads. Runs offline (simulated upstream); set a provider
-# key as an env var to route to a real model instead.
+# One-click, single-service deploy to Render (Docker). The multi-stage Dockerfile builds the Next.js UI and
+# serves it together with the API from one Python service. No GPU needed; runs offline (simulated upstream).
+# To use a real judge model on the free tier, add GROQ_API_KEY (free) and remove CONTROLPLANE_FORCE_SIM.
 services:
   - type: web
     name: controlplane-tower
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    buildCommand: pip install -e ".[serve]"
-    startCommand: python -m controlplane.proxy
     envVars:
-      - key: CONTROLPLANE_HOST
-        value: 0.0.0.0
       - key: CONTROLPLANE_FORCE_SIM
         value: "1"

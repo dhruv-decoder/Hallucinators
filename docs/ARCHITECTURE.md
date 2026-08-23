@@ -214,6 +214,25 @@ gate reading the prompt and any tool observations — indirect injection), and *
 moderation gate reading the response). All are honest heuristics with documented upgrades (PromptGuard-2,
 Llama Guard 4 / ShieldGemma-2). See [`cascade/detectors/safety.py`](../controlplane/cascade/detectors/safety.py).
 
+## 16b. Model-backed detectors + the T2 LLM-judge
+
+Detectors are assembled by a factory ([`cascade/detectors/factory.py`](../controlplane/cascade/detectors/factory.py))
+that probes the environment and picks the strongest available stack, so the same code runs offline (heuristics)
+or upgraded (models) with no call-site changes:
+
+- **Groundedness** — lexical T0 always; **HHEM-2.1-Open** cross-encoder at T1 when `transformers`/`torch` are
+  installed (the VoI rule decides when to climb to it). `1 - factual_consistency` = groundedness risk.
+- **PII** — regex T0 always; **Presidio NER** when opted in (`CONTROLPLANE_USE_PRESIDIO=1`).
+- **T2 LLM-judge** ([`judge.py`](../controlplane/cascade/detectors/judge.py)) — a real, costly verification the
+  stopping rule buys **only for the uncertain tail**. Backends auto-detected: litellm (a provider key) or a
+  local **Ollama**. If neither is present the judge is absent and the cascade stops at T1 — no fabricated judge.
+  Its real cost/latency feed the stopping rule and the P&L, so it embodies the VoI thesis end to end.
+
+Every model-backed detector abstains (returns 0, flagged) on any load/inference failure, so enabling one can
+never 500 a request. `GET /healthz` and the dashboard report which are live. Reproducibility: `make eval` and
+the test suite pin heuristics-only (`CONTROLPLANE_MODELS=off`), so their numbers never depend on what happens
+to be installed or listening locally. Prices are sourced in [EVIDENCE.md](EVIDENCE.md).
+
 ## 17. Compliance evidence pack
 
 Regulations differ by geography/industry and evolve, so nothing about a rule is hard-coded in detection;

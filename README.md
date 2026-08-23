@@ -47,6 +47,11 @@ when the check's expected reduction in loss beats its own cost and latency. See
 - **Compliance evidence pack** (`controlplane/compliance/`) — maps the hash-chained receipts to concrete
   **EU AI Act** (Arts. 12/13/14/15/26/50), **ISO/IEC 42001**, and **NIST AI RMF** controls, exported as JSON
   or a downloadable Markdown pack. Governance stays policy-as-config; evidence is generated on demand.
+- **Model-backed detectors + a T2 LLM-judge** (`controlplane/cascade/detectors/`) — a factory picks the
+  strongest stack available: lexical heuristics offline, **HHEM-2.1-Open** groundedness + **Presidio** NER when
+  the `[ml]` extra is installed, and a real **T2 LLM-as-judge** (litellm or local **Ollama**) that the VoI rule
+  buys only for the uncertain tail. All optional and lazy; `GET /healthz` shows what's live. Prices are sourced
+  in [docs/EVIDENCE.md](docs/EVIDENCE.md); `make eval` stays reproducible on heuristics (`CONTROLPLANE_MODELS=off`).
 - **VoI decision engine** (`controlplane/cascade/voi.py`) — expected loss `= P(failure) x Cost(failure)`, the
   value-of-information of the next check, and the stopping rule that decides whether to climb a tier.
 - **Probability calibration** (`controlplane/cascade/calibration.py`) — Platt and isotonic (PAV)

@@ -398,11 +398,14 @@ Run `make serve` + `make traffic` and you'll see exactly this, live.
 ## 12. What's real vs. simulated (say this out loud in the demo)
 
 - **Real:** the VoI math, calibration, the cascade, the P&L accounting, the hash-chained receipts, the proxy,
-  streaming + abort, PII detection/redaction/blocking, the dashboard, 51 passing tests.
-- **Simulated / placeholder (labelled as such):** the upstream model (offline failure-injection so it runs
-  with no keys), the model *prices*, and the detectors are lightweight **T0 heuristics** (lexical overlap,
-  regex) standing in for their model-based upgrades (HHEM/MiniCheck groundedness, GLiNER/Presidio, Llama-Guard
-  class safety). Every heuristic documents its upgrade path.
+  streaming + abort, PII detection/redaction/blocking, agentic trajectory oversight, the compliance pack, the
+  dashboard, and — now wired behind a factory — **model-backed detectors** (HHEM-2.1 groundedness, Presidio
+  NER) and a **real T2 LLM-judge** (litellm or local Ollama) the VoI rule climbs to on the uncertain tail.
+  Prices are now **sourced** (Aug 2026, see [EVIDENCE.md](EVIDENCE.md)). 70 passing tests.
+- **Simulated / placeholder (labelled as such):** the upstream model is offline failure-injection so the demo
+  runs with no keys, and the *default* detectors are lightweight **T0 heuristics** (lexical overlap, regex) —
+  the model-backed upgrades above are optional (`[ml]` extra / a judge backend) and off by default. Any
+  workload run against the simulated upstream uses real prices on *simulated* token counts.
 - **The contribution is the decision framework** — running oversight as a value-of-information decision that
   funds itself — not raw detector SOTA. Swapping a better detector behind the same interface only improves the
   numbers; it doesn't change the idea.

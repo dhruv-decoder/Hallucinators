@@ -170,3 +170,33 @@ def test_redact_pii_labels_and_scrubs_values() -> None:
 def test_models_endpoint(client: TestClient) -> None:
     ids = [m["id"] for m in client.get("/v1/models").json()["data"]]
     assert "controlplane-sim" in ids
+
+
+def test_dashboard_and_static_assets_served(client: TestClient) -> None:
+    assert "<title>ControlPlane" in client.get("/").text
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/styles.css").status_code == 200
+
+
+def test_healthz_reports_models(client: TestClient) -> None:
+    h = client.get("/healthz").json()
+    assert h["ok"] is True
+    assert set(h["models"]) == {"groundedness", "pii", "judge"}
+
+
+def test_benchmark_job_runs_with_progress(client: TestClient) -> None:
+    import time
+
+    started = client.post("/v1/oversight/jobs/benchmark?n=300&weekly_volume=50000").json()
+    job_id = started["id"]
+    for _ in range(100):
+        snap = client.get(f"/v1/oversight/jobs/{job_id}").json()
+        if snap["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert snap["status"] == "done"
+    r = snap["result"]
+    assert set(r["added_latency_ms"]) == {"p50", "p95", "p99", "mean"}
+    assert r["throughput_rps"] > 0
+    assert r["at_scale"]["weekly_volume"] == 50000
+    assert client.get("/v1/oversight/jobs/nope").status_code == 404

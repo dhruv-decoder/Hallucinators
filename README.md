@@ -97,10 +97,13 @@ make serve           # starts The Tower on http://127.0.0.1:8000  → open it in
 make traffic         # (in a second terminal) fires the demo workload at it via a one-line base_url swap
 ```
 
-The **product frontend is Next.js + TypeScript + Tailwind** ([web/](web/)). `make web-build` compiles it to a
-static export that FastAPI serves at `/` — so the whole product is a **single service** (deployable to Render
-in one click; see [docs/DEPLOY.md](docs/DEPLOY.md)). Skip `make web-build` and you get a lightweight built-in
-dashboard instead. For frontend hot-reload during development, use `make web-dev` (UI on :3000, API proxied).
+The **product frontend is Next.js + TypeScript + Tailwind** ([web/](web/)) — a marketing landing page that
+launches the live Control-Tower app, with light/dark themes. `make web-build` compiles it to a static export
+that FastAPI serves at `/` — so the whole product is a **single service** (deployable to Render in one click;
+see [docs/DEPLOY.md](docs/DEPLOY.md)). Skip `make web-build` and you get a lightweight built-in dashboard
+instead. For frontend hot-reload during development, use `make web-dev` (UI on :3000, API proxied).
+
+**Step-by-step test of every flow:** [docs/TESTING.md](docs/TESTING.md).
 
 Then click **“Send demo traffic”** on the dashboard and watch the Oversight P&L go net-negative in real
 time. The dashboard has views for the live feed, the confidently-wrong map, the P&L, a **latency & scale

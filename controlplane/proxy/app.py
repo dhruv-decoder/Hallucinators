@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -61,6 +63,14 @@ def _oversight_block(res: OverseeResult) -> OversightBlock:
 def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated: bool = False) -> FastAPI:
     """Build the FastAPI app. ``force_simulated`` pins the offline upstream even if a provider key is set."""
     app = FastAPI(title="ControlPlane — The Tower", version="0.1.0")
+    # Allow a separately-hosted frontend (e.g. the Next.js app on Vercel) to call the API. Lock this down
+    # with CONTROLPLANE_CORS_ORIGINS in production; defaults open for the demo.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=os.environ.get("CONTROLPLANE_CORS_ORIGINS", "*").split(","),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     service = OversightService(recorder_path=recorder_path)
     upstream = build_upstream(force_simulated=force_simulated)
     service.upstream = upstream  # lets bulk-simulate jobs generate candidates
@@ -203,18 +213,30 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             headers={"Content-Disposition": "attachment; filename=controlplane_compliance_pack.md"},
         )
 
-    # ---- Dashboard ---------------------------------------------------------------------------------
-    app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
-
-    @app.get("/")
-    def dashboard() -> FileResponse:
-        return FileResponse(_STATIC / "index.html")
-
     @app.get("/healthz")
     def healthz() -> dict:
         from controlplane.cascade.detectors.factory import active_models
 
         return {"ok": True, "upstream": upstream.name, "models": active_models()}
+
+    # ---- Dashboards --------------------------------------------------------------------------------
+    # The lite (framework-free) dashboard is always available; the Next.js product UI is served at / when
+    # it has been built (web/out) -- so a single service can ship the polished frontend + the API together.
+    app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+
+    @app.get("/lite")
+    def lite_dashboard() -> FileResponse:
+        return FileResponse(_STATIC / "index.html")
+
+    # Mounted LAST so the catch-all never shadows the API routes above.
+    web_out = Path(__file__).resolve().parents[2] / "web" / "out"
+    if web_out.exists():
+        app.mount("/", StaticFiles(directory=str(web_out), html=True), name="webapp")
+    else:
+
+        @app.get("/")
+        def dashboard() -> FileResponse:
+            return FileResponse(_STATIC / "index.html")
 
     return app
 

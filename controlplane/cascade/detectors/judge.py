@@ -29,11 +29,20 @@ from controlplane.pnl.pricing import Pricing
 _NUM = re.compile(r"\d+")
 
 
+_PROVIDER_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY")
+
+
 def _provider_key_present() -> bool:
-    return any(
-        os.environ.get(k)
-        for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_API_KEY", "GEMINI_API_KEY")
-    )
+    return any(os.environ.get(k) for k in _PROVIDER_KEYS)
+
+
+def _default_judge_model() -> str:
+    """Pick a sensible free/cheap judge model from whichever provider key is set (Groq is free & fast)."""
+    if os.environ.get("CONTROLPLANE_JUDGE_MODEL"):
+        return os.environ["CONTROLPLANE_JUDGE_MODEL"]
+    if os.environ.get("GROQ_API_KEY") and not os.environ.get("OPENAI_API_KEY"):
+        return "groq/llama-3.3-70b-versatile"  # free tier via Groq, litellm-routed
+    return "gpt-4o-mini"
 
 
 def _ollama_host() -> str:
@@ -65,7 +74,7 @@ class LlmJudgeDetector(Detector):
         elif self.backend == "ollama":
             self.model = os.environ.get("CONTROLPLANE_JUDGE_MODEL", "llama3.1")
         else:
-            self.model = os.environ.get("CONTROLPLANE_JUDGE_MODEL", "gpt-4o-mini")
+            self.model = _default_judge_model()
         # Real cost/latency the stopping rule weighs. Local (ollama) is ~$0; a hosted judge is priced.
         self.est_cost_usd = 0.0 if self.backend == "ollama" else Pricing().cost(self.model, 400, 30)
         self.est_latency_ms = 500.0

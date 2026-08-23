@@ -25,14 +25,29 @@ _MODEL_ID = "vectara/hallucination_evaluation_model"
 
 @lru_cache(maxsize=1)
 def _get_model():
-    """Load and cache the HHEM cross-encoder. Raises ImportError if the optional deps are missing."""
+    """Load and cache the HHEM cross-encoder on the best available device (M4 GPU / CUDA / CPU).
+
+    Validates the chosen device with a tiny prediction and falls back to CPU if an op is unsupported there
+    (Metal/MPS does not implement every kernel), so enabling the GPU can never break the pipeline.
+    """
     try:
         from transformers import AutoModelForSequenceClassification
     except ImportError as exc:  # pragma: no cover - only without the [ml] extra
         raise ImportError(
             "HHEMGroundednessDetector needs the '[ml]' extra: pip install -e '.[ml]'"
         ) from exc
-    return AutoModelForSequenceClassification.from_pretrained(_MODEL_ID, trust_remote_code=True)
+
+    from controlplane.runtime import pick_device
+
+    model = AutoModelForSequenceClassification.from_pretrained(_MODEL_ID, trust_remote_code=True)
+    device = pick_device()
+    if device != "cpu":
+        try:
+            model = model.to(device)
+            model.predict([("the sky is blue", "the sky is blue")])  # smoke-test the device
+        except Exception:  # noqa: BLE001 - unsupported op on this device -> CPU
+            model = model.to("cpu")
+    return model
 
 
 class HHEMGroundednessDetector(Detector):

@@ -34,13 +34,16 @@ serve = [
 providers = [
   "litellm>=1.0",
 ]
-# Optional model-backed detectors. Presidio + spaCy power the NER-based PII detector (realised today).
-# After installing this extra, download the spaCy model once:
-#   python -m spacy download en_core_web_sm
-# Left with loose bounds; groundedness (HHEM/MiniCheck) and safety models are added as they are wired.
+# Optional model-backed detectors. The core engine and demos run without any of these (heuristics + a
+# graceful fallback); install this extra to enable the real models. After installing:
+#   python -m spacy download en_core_web_sm      # for the Presidio NER PII detector (opt-in)
+# HHEM-2.1-Open (groundedness) downloads on first use from the Hugging Face hub.
+# Enable Presidio at runtime with CONTROLPLANE_USE_PRESIDIO=1 (it needs the spaCy model above).
 ml = [
   "presidio-analyzer>=2.2",
   "spacy>=3.7,<4",
+  "transformers>=4.40",  # HHEM-2.1-Open groundedness cross-encoder
+  "torch>=2.2",
 ]
 # Developer tooling.
 dev = [

@@ -16,7 +16,8 @@ from controlplane.proxy.app import create_app
 
 def main() -> None:
     host = os.environ.get("CONTROLPLANE_HOST", "127.0.0.1")
-    port = int(os.environ.get("CONTROLPLANE_PORT", "8000"))
+    # Cloud hosts (Render/Heroku/etc.) inject $PORT; fall back to our own var, then 8000.
+    port = int(os.environ.get("PORT") or os.environ.get("CONTROLPLANE_PORT") or "8000")
     force_sim = os.environ.get("CONTROLPLANE_FORCE_SIM", "").lower() in ("1", "true", "yes")
     app = create_app(force_simulated=force_sim)
     print("\n  ControlPlane · The Tower")

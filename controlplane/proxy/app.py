@@ -28,6 +28,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from controlplane.cascade.detectors.responsibility import RegexPiiDetector
 from controlplane.core.types import RequestContext
@@ -62,6 +63,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     app = FastAPI(title="ControlPlane — The Tower", version="0.1.0")
     service = OversightService(recorder_path=recorder_path)
     upstream = build_upstream(force_simulated=force_simulated)
+    service.upstream = upstream  # lets bulk-simulate jobs generate candidates
     app.state.service = service
     app.state.upstream = upstream
 
@@ -162,6 +164,23 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         """Run the compounding-hallucination agent trajectory under the trajectory auditor."""
         return await asyncio.to_thread(service.run_agent_demo)
 
+    @app.post("/v1/oversight/jobs/benchmark")
+    def start_benchmark(n: int = 2000, weekly_volume: int = 50_000) -> dict:
+        """Start the latency/throughput benchmark; poll GET /v1/oversight/jobs/{id} for progress + result."""
+        return service.start_benchmark(n=n, weekly_volume=weekly_volume).snapshot()
+
+    @app.post("/v1/oversight/jobs/simulate")
+    def start_bulk_simulate(n: int = 40) -> dict:
+        """Start a large simulated workload through the real pipeline (feeds the live feed + P&L)."""
+        return service.start_bulk_simulate(n=n).snapshot()
+
+    @app.get("/v1/oversight/jobs/{job_id}")
+    def get_job(job_id: str) -> dict:
+        job = service.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        return job.snapshot()
+
     @app.get("/v1/oversight/compliance")
     def compliance() -> dict:
         """Map the recorded receipts to EU AI Act / ISO 42001 / NIST AI RMF controls (JSON)."""
@@ -185,6 +204,8 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         )
 
     # ---- Dashboard ---------------------------------------------------------------------------------
+    app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+
     @app.get("/")
     def dashboard() -> FileResponse:
         return FileResponse(_STATIC / "index.html")

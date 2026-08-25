@@ -38,6 +38,16 @@ export interface AgentReceipt {
   wasted_usd: number; summary: string; verdicts: StepVerdict[];
 }
 export interface ControlRow { framework: string; control: string; evidence: string; status: string }
+export interface UseCaseSpec {
+  use_case: string; weekly_volume: number; latency_budget: string; risk_tolerance: string;
+  data_sensitivity: string; geo: string;
+}
+export interface GeneratedPolicy {
+  profile_id: string; applied: boolean;
+  knobs: { lambda_latency: number; cost_fail: Record<string, number>; block_threshold: number; escalate_threshold: number; annotate_threshold: number };
+  projection: { weekly_volume: number; cleared_at_t0_pct: number; added_latency_p95_ms: number; escalation_rate: number; human_reviews_per_month: number; projected_monthly_net_usd: number; self_funding: boolean; note: string };
+  rationale: string[]; recommended_detectors: string[]; compliance: string[];
+}
 
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`);
@@ -62,6 +72,10 @@ export const api = {
   replay: () => jpost<{ scenarios: Scenario[] }>("/v1/oversight/replay"),
   agentDemo: () => jpost<AgentReceipt>("/v1/oversight/agent-demo"),
   compliance: () => jget<{ decisions: number; controls: ControlRow[] }>("/v1/oversight/compliance"),
+  generatePolicy: (spec: UseCaseSpec, apply = false) =>
+    fetch(`${API_BASE}/v1/oversight/policy/generate?apply=${apply ? 1 : 0}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(spec),
+    }).then((r) => r.json() as Promise<GeneratedPolicy>),
   startBenchmark: (n: number, weekly: number) =>
     jpost<JobSnapshot>(`/v1/oversight/jobs/benchmark?n=${n}&weekly_volume=${weekly}`),
   job: (id: string) => jget<JobSnapshot>(`/v1/oversight/jobs/${id}`),

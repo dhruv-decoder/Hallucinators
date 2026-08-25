@@ -2,16 +2,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Crosshair, Cpu, Gauge, History, Info, LayoutGrid, LifeBuoy, MousePointerClick, Play,
-  Rss, ScrollText, Sparkles, Wallet, Workflow, X,
+  Rss, ScrollText, SlidersHorizontal, Sparkles, Wallet, Workflow, X,
 } from "lucide-react";
-import { AgentReceipt, api, ControlRow, Receipt, Scenario, Summary } from "@/lib/api";
+import { Action, AgentReceipt, api, ControlRow, GeneratedPolicy, Receipt, Scenario, Summary, UseCaseSpec } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, Card, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
-type View = "overview" | "feed" | "quadrant" | "pnl" | "benchmark" | "replay" | "agents" | "compliance" | "detectors" | "help";
+type View = "configure" | "overview" | "feed" | "quadrant" | "pnl" | "benchmark" | "replay" | "agents" | "compliance" | "detectors" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
+  { group: "Set up", items: [
+    { id: "configure", label: "Use-case setup", icon: SlidersHorizontal } ] },
   { group: "Monitor", items: [
     { id: "overview", label: "Overview", icon: LayoutGrid }, { id: "feed", label: "Live feed", icon: Rss },
     { id: "quadrant", label: "Confidently-wrong", icon: Crosshair }, { id: "pnl", label: "Oversight P&L", icon: Wallet } ] },
@@ -23,6 +25,7 @@ const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] 
     { id: "help", label: "Getting started", icon: LifeBuoy } ] },
 ];
 const TITLES: Record<View, [string, string]> = {
+  configure: ["Configure for your use case", "Tune oversight to your traffic, latency, risk, and data — the policy is generated for you"],
   overview: ["Overview", "One verdict across performance, cost, and responsibility — in real time"],
   feed: ["Live feed", "Every decision, as it happens — the audit trail behind each response"],
   quadrant: ["Confidently-wrong map", "The danger zone we exist to catch: sure of itself and wrong"],
@@ -138,16 +141,23 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
 
         <main className="mx-auto w-full max-w-[1480px] p-6">
           {guide && <Onboard onDismiss={dismissGuide} onSend={sendTraffic} busy={busy} />}
-          {view === "overview" && <Overview summary={summary} net={net} receipts={receipts} onOpen={setDrawer} onSend={sendTraffic} busy={busy} />}
-          {view === "feed" && <Feed receipts={receipts} onOpen={setDrawer} />}
-          {view === "quadrant" && <Quadrant receipts={receipts} />}
-          {view === "pnl" && <PnlView summary={summary} net={net} />}
-          {view === "benchmark" && <Benchmark />}
-          {view === "replay" && <Replay />}
-          {view === "agents" && <Agents />}
-          {view === "compliance" && <Compliance />}
-          {view === "detectors" && <Detectors summary={summary} />}
-          {view === "help" && <Help />}
+          <div key={view} className="viewfade">
+            {view === "configure" && <Configurator onApplied={() => { api.summary().then(setSummary); setView("overview"); }} />}
+            {view === "overview" && <Overview summary={summary} net={net} receipts={receipts} onOpen={setDrawer} onSend={sendTraffic} busy={busy} />}
+            {view === "feed" && <Feed receipts={receipts} onOpen={setDrawer} />}
+            {view === "quadrant" && <Quadrant receipts={receipts} />}
+            {view === "pnl" && <PnlView summary={summary} net={net} />}
+            {view === "benchmark" && <Benchmark />}
+            {view === "replay" && <Replay />}
+            {view === "agents" && <Agents />}
+            {view === "compliance" && <Compliance />}
+            {view === "detectors" && <Detectors summary={summary} />}
+            {view === "help" && <Help />}
+          </div>
+          <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-xs text-faint max-md:flex-col max-md:gap-2">
+            <span>ControlPlane · The Tower — value-of-information oversight</span>
+            <span>{summary?.requests ?? 0} decisions · chain {summary?.chain_valid ? "verified" : "—"} · {summary?.models?.judge && summary.models.judge !== "disabled" ? `judge:${summary.models.judge}` : "heuristics"}</span>
+          </footer>
         </main>
       </div>
 
@@ -173,6 +183,86 @@ function FeedRow({ r, onOpen }: { r: Receipt; onOpen: (r: Receipt) => void }) {
 }
 
 /* ---- views ---- */
+function Field({ label, value, opts, onChange, hint }: { label: string; value: string; opts: [string, string][]; onChange: (v: string) => void; hint?: string }) {
+  return (
+    <label className="block">
+      <div className="mb-1 text-[12px] font-medium text-muted">{label}{hint && <span className="ml-1 text-faint">· {hint}</span>}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {opts.map(([v, l]) => (
+          <button key={v} onClick={() => onChange(v)} className={`rounded-lg border px-2.5 py-1.5 text-[13px] transition ${value === v ? "border-accent bg-accent-dim text-ink" : "border-line text-muted hover:border-line-2 hover:text-ink"}`}>{l}</button>
+        ))}
+      </div>
+    </label>
+  );
+}
+
+function Configurator({ onApplied }: { onApplied: () => void }) {
+  const [spec, setSpec] = useState<UseCaseSpec>({ use_case: "customer_support", weekly_volume: 50000, latency_budget: "interactive", risk_tolerance: "medium", data_sensitivity: "internal", geo: "EU" });
+  const [res, setRes] = useState<GeneratedPolicy | null>(null);
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof UseCaseSpec) => (v: string) => setSpec((s) => ({ ...s, [k]: v }));
+
+  const gen = async (apply: boolean) => {
+    setBusy(true);
+    try {
+      const r = await api.generatePolicy(spec, apply);
+      setRes(r);
+      if (apply) { toast("Policy applied", `${r.profile_id} is now live`, "ok"); onApplied(); }
+    } catch (e) { toast("Failed", String(e), "err"); }
+    setBusy(false);
+  };
+  const proj = res?.projection;
+
+  return (
+    <div className="grid grid-cols-[380px_1fr] gap-4 max-lg:grid-cols-1">
+      <Card title="Describe your use case" desc="ControlPlane maps these business facts to the value-of-information knobs — no manual tuning.">
+        <div className="flex flex-col gap-3.5">
+          <Field label="Use case" value={spec.use_case} onChange={set("use_case")} opts={[["customer_support", "Support bot"], ["internal_copilot", "Internal copilot"], ["decision_support", "Decision support"], ["agentic", "Agentic workflow"]]} />
+          <Field label="Latency budget" value={spec.latency_budget} onChange={set("latency_budget")} hint="how fast must it respond" opts={[["realtime", "Real-time"], ["interactive", "Interactive"], ["batch", "Batch"]]} />
+          <Field label="Risk tolerance" value={spec.risk_tolerance} onChange={set("risk_tolerance")} hint="cost of a wrong answer" opts={[["low", "Low (verify hard)"], ["medium", "Medium"], ["high", "High (trust more)"]]} />
+          <Field label="Data sensitivity" value={spec.data_sensitivity} onChange={set("data_sensitivity")} opts={[["public", "Public"], ["internal", "Internal"], ["regulated", "Regulated"]]} />
+          <Field label="Geography" value={spec.geo} onChange={set("geo")} opts={[["EU", "EU"], ["US", "US"], ["IN", "India"], ["global", "Global"]]} />
+          <label className="block">
+            <div className="mb-1 text-[12px] font-medium text-muted">Weekly volume · <span className="num text-ink">{spec.weekly_volume.toLocaleString()}</span> interactions</div>
+            <input type="range" min={5000} max={500000} step={5000} value={spec.weekly_volume} onChange={(e) => setSpec((s) => ({ ...s, weekly_volume: +e.target.value }))} className="w-full accent-[color:var(--accent)]" />
+          </label>
+          <button className="btn-primary" disabled={busy} onClick={() => gen(false)}>{busy ? "generating…" : "Generate policy"}</button>
+        </div>
+      </Card>
+
+      {res && proj ? (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
+            <Kpi label="Cleared @ T0" value={`${proj.cleared_at_t0_pct}%`} foot="free tier" />
+            <Kpi label="Added latency p95" value={`${proj.added_latency_p95_ms} ms`} foot="projected" />
+            <Kpi label="Escalations" value={`${(proj.escalation_rate * 100).toFixed(0)}%`} foot={`${proj.human_reviews_per_month.toLocaleString()}/mo to humans`} />
+            <Kpi label="Projected net / mo" value={usd(proj.projected_monthly_net_usd)} tone={proj.self_funding ? "good" : "bad"} foot={proj.self_funding ? "self-funding" : ""} />
+          </div>
+          <Card title={`Generated policy · ${res.profile_id}`} desc="Why each knob is set the way it is — the mapping is legible, not a black box.">
+            <div className="mb-3 grid grid-cols-2 gap-2 text-[13px] max-md:grid-cols-1">
+              {res.rationale.map((r, i) => <div key={i} className="rounded-lg border border-line bg-panel-2 px-3 py-2 text-muted">{r}</div>)}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-[12px] text-faint">detectors:</span>
+              {res.recommended_detectors.map((d) => <span key={d} className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] text-muted">{d}</span>)}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="text-[12px] text-faint">compliance:</span>
+              {res.compliance.map((c) => <span key={c} className="rounded-md border border-line bg-accent-dim px-1.5 py-0.5 text-[11px]" style={{ color: "var(--accent)" }}>{c}</span>)}
+            </div>
+            <button className="btn-primary mt-4" disabled={busy} onClick={() => gen(true)}>Apply this policy live →</button>
+            <p className="mt-2 text-xs text-faint">{proj.note}</p>
+          </Card>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center rounded-xl border border-dashed border-line text-center">
+          <div className="p-10 text-faint"><SlidersHorizontal className="mx-auto mb-2" /> Describe your use case, then <b className="text-muted">Generate policy</b> to see the tuned knobs, a projection, and the reasoning.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Onboard({ onDismiss, onSend, busy }: { onDismiss: () => void; onSend: () => void; busy: boolean }) {
   const steps = [
     { icon: Play, t: "Send demo traffic", d: "populate the tower with real overseen requests" },
@@ -243,6 +333,30 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
           <div className="flex max-h-[250px] flex-col gap-2 overflow-auto">
             {receipts.length ? receipts.slice(0, 12).map((r) => <FeedRow key={r.request_id} r={r} onOpen={onOpen} />)
               : <div className="rounded-xl border border-dashed border-line p-10 text-center text-faint">No traffic yet — click “Send demo traffic”.</div>}
+          </div>
+        </Card>
+      </div>
+      <div className="grid grid-cols-[1.3fr_1fr] gap-4 max-lg:grid-cols-1">
+        <Card title="Action mix" desc="How verdicts split across the fleet — most pass, the tail is repaired, escalated, or blocked.">
+          {(() => {
+            const ba = s?.by_action ?? {}; const total = Object.values(ba).reduce((a, b) => a + b, 0) || 1;
+            const order: Action[] = ["pass", "annotate", "auto_repair", "escalate", "block"];
+            return (<>
+              <div className="flex h-3 overflow-hidden rounded-full border border-line">
+                {order.map((a) => { const w = (ba[a] ?? 0) / total * 100; return w > 0 ? <div key={a} style={{ width: `${w}%`, background: ACTION_COLOR[a] }} title={`${a}: ${ba[a]}`} /> : null; })}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+                {order.map((a) => <span key={a} className="inline-flex items-center gap-1.5 text-muted"><i className="h-2.5 w-2.5 rounded-full" style={{ background: ACTION_COLOR[a] }} />{a.replace("_", "-")} <b className="num text-ink">{ba[a] ?? 0}</b></span>)}
+              </div>
+            </>);
+          })()}
+        </Card>
+        <Card title="System status">
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
+            <span className="text-muted">active policy</span><span className="num truncate">{s?.active_policy ?? "—"}</span>
+            <span className="text-muted">groundedness</span><span>{s?.models?.groundedness ?? "—"}</span>
+            <span className="text-muted">safety · judge</span><span>{s?.models?.safety ?? "heuristic"} · {s?.models?.judge ?? "off"}</span>
+            <span className="text-muted">audit chain</span><span style={{ color: s?.chain_valid ? "var(--pass)" : "var(--block)" }}>{s?.chain_valid ? "verified ✓" : "—"}</span>
           </div>
         </Card>
       </div>

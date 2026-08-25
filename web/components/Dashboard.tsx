@@ -1,16 +1,16 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Crosshair, Cpu, Gauge, History, Info, LayoutGrid, LifeBuoy, MousePointerClick, Play,
+  Activity, Crosshair, Cpu, Gauge, History, Info, LayoutGrid, LifeBuoy, MousePointerClick, Play,
   Rss, ScrollText, SlidersHorizontal, Sparkles, Wallet, Workflow, X,
 } from "lucide-react";
-import { Action, AgentReceipt, api, ControlRow, GeneratedPolicy, Receipt, Scenario, Summary, UseCaseSpec } from "@/lib/api";
+import { Action, AgentReceipt, api, ControlRow, GeneratedPolicy, Receipt, RuntimeObservability, Scenario, Summary, UseCaseSpec } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, Card, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
-type View = "configure" | "overview" | "feed" | "quadrant" | "pnl" | "benchmark" | "replay" | "agents" | "compliance" | "detectors" | "help";
+type View = "configure" | "overview" | "feed" | "quadrant" | "pnl" | "benchmark" | "runtime" | "replay" | "agents" | "compliance" | "detectors" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
   { group: "Set up", items: [
     { id: "configure", label: "Use-case setup", icon: SlidersHorizontal } ] },
@@ -18,7 +18,7 @@ const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] 
     { id: "overview", label: "Overview", icon: LayoutGrid }, { id: "feed", label: "Live feed", icon: Rss },
     { id: "quadrant", label: "Confidently-wrong", icon: Crosshair }, { id: "pnl", label: "Oversight P&L", icon: Wallet } ] },
   { group: "Prove", items: [
-    { id: "benchmark", label: "Latency & scale", icon: Gauge }, { id: "replay", label: "What-If replay", icon: History },
+    { id: "benchmark", label: "Latency & scale", icon: Gauge }, { id: "runtime", label: "Runtime health", icon: Activity }, { id: "replay", label: "What-If replay", icon: History },
     { id: "agents", label: "Agent oversight", icon: Workflow } ] },
   { group: "Govern", items: [
     { id: "compliance", label: "Compliance", icon: ScrollText }, { id: "detectors", label: "Detectors & models", icon: Cpu },
@@ -31,6 +31,7 @@ const TITLES: Record<View, [string, string]> = {
   quadrant: ["Confidently-wrong map", "The danger zone we exist to catch: sure of itself and wrong"],
   pnl: ["Oversight P&L", "Safer AND cheaper — a negative price tag, measured not asserted"],
   benchmark: ["Latency & scale", "Does oversight slow the model down? Measure it."],
+  runtime: ["Runtime health", "Live service telemetry, saturation protection, and detector cost"],
   replay: ["What-If replay", "Re-run the same workload under different risk appetites — the proof engine"],
   agents: ["Agent oversight", "Catching compounding risk across a multi-step agent"],
   compliance: ["Compliance", "Receipts → EU AI Act / ISO 42001 / NIST AI RMF evidence"],
@@ -148,6 +149,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             {view === "quadrant" && <Quadrant receipts={receipts} />}
             {view === "pnl" && <PnlView summary={summary} net={net} />}
             {view === "benchmark" && <Benchmark />}
+            {view === "runtime" && <RuntimeHealth />}
             {view === "replay" && <Replay />}
             {view === "agents" && <Agents />}
             {view === "compliance" && <Compliance />}
@@ -431,6 +433,72 @@ function useJob() {
     } catch (e) { toast("Job failed", String(e), "err"); setProg({ on: false, p: 0, label: "" }); }
   };
   return { prog, run };
+}
+
+function RuntimeHealth() {
+  const [obs, setObs] = useState<RuntimeObservability | null>(null);
+  const [probeRes, setProbeRes] = useState<any>(null);
+  const [probing, setProbing] = useState(false);
+  const [ready, setReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      try {
+        const [o, r] = await Promise.all([api.observability(), api.ready()]);
+        if (live) { setObs(o); setReady(r.ready); }
+      } catch { if (live) setReady(false); }
+    };
+    load();
+    const id = setInterval(load, 2000);
+    return () => { live = false; clearInterval(id); };
+  }, []);
+  const runProbe = async () => {
+    setProbing(true);
+    try {
+      const start = await api.runtimeProbe(120, 16);
+      let s = await api.job(start.id);
+      while (s.status === "running") {
+        await new Promise((r) => setTimeout(r, 300));
+        s = await api.job(start.id);
+      }
+      if (s.status === "done") { setProbeRes(s.result); toast("Runtime probe complete", `${s.result.throughput_rps} rps · p95 ${s.result.latency_ms.p95} ms`, "ok"); }
+      else toast("Probe failed", s.error ?? "", "err");
+    } catch (e) { toast("Probe failed", String(e), "err"); }
+    setProbing(false);
+  };
+  const p = obs?.latency_ms;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-4 gap-3 max-xl:grid-cols-2">
+        <Kpi label="p95 oversight" value={`${p?.p95 ?? "—"} ms`} tone="good" foot={`${p?.sample_count ?? 0} samples`} />
+        <Kpi label="throughput" value={`${(obs?.throughput_rps ?? 0).toFixed(2)} rps`} foot={`${obs?.active_requests ?? 0} active`} />
+        <Kpi label="overload shed" value={`${obs?.overload_rejections ?? 0}`} foot={`max concurrency ${obs?.max_concurrency ?? 0}`} />
+        <Kpi label="stream aborts" value={`${obs?.stream_aborts ?? 0}`} foot={`${obs?.errors ?? 0} errors`} />
+      </div>
+      <Card title="Service readiness" desc="A real liveness/readiness check, plus bounded concurrency so the oversight layer protects itself under load.">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`badge ${ready ? "badge-pass" : "badge-block"}`}>{ready ? "ready" : "not ready"}</span>
+          <span className="text-sm text-muted">max concurrency {obs?.config.max_concurrency ?? "—"} · queue timeout {obs?.config.queue_timeout_ms ?? "—"} ms · upstream timeout {obs?.config.upstream_timeout_s ?? "—"} s</span>
+          <button className="btn-primary ml-auto" onClick={runProbe} disabled={probing}>{probing ? "running…" : "Run concurrency probe"}</button>
+        </div>
+      </Card>
+      <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+        <Card title="Tier activity" desc="Counts are based on detector signals recorded during live traffic.">
+          <div className="grid grid-cols-3 gap-3">{["T0", "T1", "T2"].map((t) => <Kpi key={t} label={t} value={`${obs?.tier_counts?.[t] ?? 0}`} />)}</div>
+        </Card>
+        <Card title="Detector latency" desc="Average detector runtime from the live receipt stream.">
+          <div className="flex flex-col gap-2">{Object.entries(obs?.detector_avg_latency_ms ?? {}).slice(0, 8).map(([name, ms]) => (
+            <div key={name} className="flex items-center justify-between border-b border-line pb-1.5 text-sm"><span className="text-muted">{name}</span><span className="num">{ms.toFixed(2)} ms</span></div>
+          ))}{!obs?.detector_avg_latency_ms || Object.keys(obs.detector_avg_latency_ms).length === 0 ? <span className="text-sm text-faint">Run traffic to populate detector telemetry.</span> : null}</div>
+        </Card>
+      </div>
+      {probeRes && <Card title="Concurrency probe" desc="Same real pipeline, driven at bounded concurrency. This is measured runtime behavior, not a capacity claim from the UI.">
+        <div className="grid grid-cols-5 gap-3 max-lg:grid-cols-2">
+          <Kpi label="requests" value={probeRes.requests} /><Kpi label="concurrency" value={probeRes.concurrency} /><Kpi label="throughput" value={`${probeRes.throughput_rps} rps`} /><Kpi label="p50" value={`${probeRes.latency_ms.p50} ms`} /><Kpi label="p95" value={`${probeRes.latency_ms.p95} ms`} />
+        </div>
+      </Card>}
+    </div>
+  );
 }
 
 function Benchmark() {

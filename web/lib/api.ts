@@ -42,6 +42,13 @@ export interface UseCaseSpec {
   use_case: string; weekly_volume: number; latency_budget: string; risk_tolerance: string;
   data_sensitivity: string; geo: string;
 }
+export interface RuntimeObservability {
+  uptime_seconds: number; requests: number; active_requests: number; throughput_rps: number; errors: number; overload_rejections: number; stream_aborts: number; max_concurrency: number;
+  latency_ms: { p50: number; p95: number; p99: number; sample_count: number };
+  actions: Record<string, number>; tier_counts: Record<string, number>; detector_calls: Record<string, number>; detector_avg_latency_ms: Record<string, number>;
+  config: { max_concurrency: number; queue_timeout_ms: number; upstream_timeout_s: number; upstream_retries: number };
+}
+
 export interface GeneratedPolicy {
   profile_id: string; applied: boolean;
   knobs: { lambda_latency: number; cost_fail: Record<string, number>; block_threshold: number; escalate_threshold: number; annotate_threshold: number };
@@ -80,4 +87,8 @@ export const api = {
     jpost<JobSnapshot>(`/v1/oversight/jobs/benchmark?n=${n}&weekly_volume=${weekly}`),
   job: (id: string) => jget<JobSnapshot>(`/v1/oversight/jobs/${id}`),
   streamUrl: () => `${API_BASE}/v1/oversight/stream`,
+  observability: () => jget<RuntimeObservability>('/v1/oversight/observability'),
+  ready: () => jget<{ ready: boolean; upstream: string; policy_loaded: boolean; recorder: boolean }>('/readyz'),
+  runtimeProbe: (n = 120, concurrency = 16) => jpost<JobSnapshot>(`/v1/oversight/jobs/runtime-probe?n=${n}&concurrency=${concurrency}`),
+  verifyReceipt: (id: string) => jget<{ request_id: string; receipt_valid: boolean; chain_valid: boolean; hash_self: string; hash_prev: string }>(`/v1/oversight/receipts/${encodeURIComponent(id)}/verify`),
 };

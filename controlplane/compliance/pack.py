@@ -13,7 +13,10 @@ from controlplane.core.types import Action, Axis, VoIReceipt
 _DISCLAIMER = (
     "This pack is an evidence aid generated from ControlPlane's tamper-evident flight recorder. It maps "
     "recorded operational facts to regulatory controls to support an audit; it is not a legal certification "
-    "of conformity. Prices and any offline-simulated traffic are labelled as such."
+    "of conformity. Regulatory note (as of 2 Aug 2026): EU AI Act GPAI obligations and Art. 50 transparency "
+    "are enforceable; the high-risk Annex III obligations (Arts. 8-15/26) were deferred to 2 Dec 2027 by the "
+    "Digital Omnibus, so those rows map evidence to controls that may not yet be legally required for a given "
+    "system. Prices and any offline-simulated traffic are labelled as such."
 )
 
 

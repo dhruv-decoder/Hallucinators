@@ -31,3 +31,11 @@ recorder_log.jsonl
 node_modules/
 ui/.next/
 ui/out/
+
+# Runtime flight recorder
+controlplane.db
+*.db-wal
+*.db-shm
+request.json
+
+artifacts/

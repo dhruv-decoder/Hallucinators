@@ -28,7 +28,7 @@ from controlplane.cascade.detectors import (
 from controlplane.cascade.engine import CascadeEngine
 from controlplane.core.types import PolicyProfile, RequestContext, VoIReceipt
 from controlplane.pnl import PnlLedger
-from controlplane.recorder import JsonlRecorder
+from controlplane.recorder import SQLiteFlightRecorder
 
 
 def sample_requests() -> list[RequestContext]:
@@ -137,7 +137,7 @@ def main() -> None:
     policy = PolicyProfile(id="support_bot@IN@balanced")
     engine = build_engine(policy)
     ledger = PnlLedger()
-    recorder = JsonlRecorder(path="recorder_log.jsonl")
+    recorder = SQLiteFlightRecorder(path="controlplane.db")
 
     print("ControlPlane oversight demo -- support-bot workload")
     print("=" * 60)
@@ -153,7 +153,7 @@ def main() -> None:
     print(f"  cost saved:   ${totals.cost_saved_usd:.5f}")
     print(f"  safety spend: ${totals.safety_spend_usd:.5f}")
     print(f"  net:          ${totals.net_usd:.5f}  " + ("(self-funding)" if totals.net_usd < 0 else ""))
-    print(f"\nFlight recorder: {len(recorder.receipts)} receipts, hash chain valid = {recorder.verify_chain()}")
+    print(f"\nFlight recorder: {recorder.count()} receipts, hash chain valid = {recorder.verify_chain()}")
 
 
 if __name__ == "__main__":

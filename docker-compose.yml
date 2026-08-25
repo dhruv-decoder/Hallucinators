@@ -1,0 +1,37 @@
+services:
+  mock-model:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./docker:/app
+    command: sh -c "pip install --no-cache-dir fastapi==0.141.1 uvicorn==0.52.3 && uvicorn mock_model:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  controlplane:
+    build: .
+    depends_on:
+      mock-model:
+        condition: service_healthy
+    environment:
+      CONTROLPLANE_BACKEND: upstream
+      CONTROLPLANE_UPSTREAM_BASE_URL: http://mock-model:8000/v1
+      CONTROLPLANE_RECORDER_DB_PATH: /data/controlplane.db
+      CONTROLPLANE_POLICY_PATH: /app/policies/policies.yaml
+      CONTROLPLANE_LATENCY_BUDGET_MS: "100"
+      CONTROLPLANE_STREAM_ABORT_ENABLED: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - controlplane_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  controlplane_data:

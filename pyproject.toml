@@ -29,6 +29,7 @@ serve = [
   "uvicorn==0.52.3",
   "litellm>=1.0",
   "httpx>=0.28,<1",
+  "PyYAML>=6.0",
 ]
 # Optional model-backed detectors. Presidio + spaCy power the NER-based PII detector (realised today).
 # After installing this extra, download the spaCy model once:
@@ -41,6 +42,7 @@ ml = [
 # Developer tooling.
 dev = [
   "pytest==8.3.4",
+  "pytest-asyncio==1.4.0",
   "ruff==0.8.4",
 ]
 

@@ -10,11 +10,10 @@ One layer, three coupled risks, one verdict:
 - **Cost** — is this the cheapest path to this quality?
 - **Responsibility** — is it biased, unsafe, or leaking data?
 
-> Status: **early prototype.** The decision engine (the VoI cascade, calibration, expected-loss stopping
-> rule, P&L ledger, hash-chained receipts, and the What-If/Replay simulator) runs today and is unit-tested.
-> The OpenAI-compatible proxy, the richer detectors (HHEM/MiniCheck groundedness, GLiNER PII, safety
-> models), and the Control-Tower UI are in progress. What is implemented vs. planned is stated honestly
-> below and in [docs/PLAN.md](docs/PLAN.md).
+> Status: **working Round-2 prototype.** The VoI decision engine, SQLite flight recorder, policy hot-reload,
+> OpenAI-compatible proxy, parallel detector runtime, streaming oversight/abort hooks, and evaluation harness
+> are implemented and tested. Richer model-backed detectors and the Control-Tower UI remain separate workstreams.
+> See [docs/PLAN.md](docs/PLAN.md) for the remaining roadmap.
 
 ## Why this is different
 
@@ -34,8 +33,8 @@ when the check's expected reduction in loss beats its own cost and latency. See
 - **T0 detectors** (`controlplane/cascade/detectors/`) — real, lightweight heuristics for PII, groundedness,
   overconfidence, and model-overkill, each with a documented upgrade path to a heavier model.
 - **Oversight P&L** (`controlplane/pnl/`) — cost saved vs. safety spend vs. net, per request.
-- **Flight recorder** (`controlplane/recorder/`) — every decision becomes a hash-chained, tamper-evident
-  receipt (reference JSONL store; SQLite upgrade in progress).
+- **Flight recorder** (`controlplane/recorder/`) — every decision becomes a persistent SQLite, hash-chained,
+  tamper-evident receipt with query and verification APIs.
 - **What-If / Replay simulator** (`controlplane/replay/`) — re-runs a workload under different oversight
   policies (and oversight-off) to show the residual-risk vs. cost trade-off and prove the P&L is self-funding.
 - **Adaptive Oversight Thermostat** (`controlplane/cascade/thermostat.py`) — a feedback controller that
@@ -44,16 +43,18 @@ when the check's expected reduction in loss beats its own cost and latency. See
   spaCy NER detector that catches free-text names/locations the regex misses (`[ml]` extra; see below).
 - **Feedback loop** (`controlplane/feedback/`) — human overrides on flagged decisions refit detector
   calibration, so detection gets more honest over time (`python -m controlplane.demo.run_feedback`).
-- **Evaluation harness** (`controlplane/eval/`) — `make eval` reports per-axis precision/recall/F1/FPR/FNR
-  against no-oversight and flag-everything baselines, plus cost and calibration, all reproducibly.
+- **Evaluation harness** (`controlplane/eval/`) — `make eval` reports per-axis precision/recall/F1/FPR/FNR,
+  latency p50/p95, tier-0 clearance, verification cost, P&L, and ECE against verify-none and verify-all baselines.
 
 ## Run it
 
 ```bash
-make install      # creates .venv and installs the core engine + dev tools
-make test         # unit tests for the VoI math, calibration, P&L, and replay
-make demo         # runs sample requests through the cascade and prints receipts + a P&L summary
-make whatif       # re-runs a workload under strict/balanced/lenient/off to show the risk-vs-cost trade-off
+make install      # creates .venv and installs runtime + dev tools
+make test         # run the complete test suite
+make serve        # start the OpenAI-compatible proxy
+make demo         # run sample requests through the cascade
+make eval         # regenerate the evaluation report
+make whatif       # re-run a workload under strict/balanced/lenient/off to show the risk-vs-cost trade-off
 ```
 
 The demo needs no API keys or model downloads — the core engine and T0 heuristics run locally.
@@ -91,7 +92,7 @@ cross-platform.
 4. Install the project:
    ```powershell
    python -m pip install --upgrade pip
-   pip install -e ".[dev]"
+   pip install -e ".[dev,serve]"
    ```
 5. Run the tests and demos:
    ```powershell
@@ -112,7 +113,9 @@ controlplane/         # the Python package
   core/               # shared contracts: types, Detector interface, receipt schema
   cascade/            # VoI engine, calibration, tier orchestration, detectors
   pnl/                # pricing table + Oversight P&L ledger
-  recorder/           # receipt builder + hash-chained store
+  recorder/           # receipt builder + SQLite hash-chained store
+  policy/              # YAML policy profiles + hot reload
+  proxy/               # OpenAI-compatible gateway + streaming oversight
   demo/               # end-to-end runnable demo
 tests/                # unit tests
 docs/                 # PLAN.md, WORKPLAN.md, JUDGE.md, guidelines, ARCHITECTURE, DECISIONS
@@ -129,3 +132,32 @@ docs/                 # PLAN.md, WORKPLAN.md, JUDGE.md, guidelines, ARCHITECTURE
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+
+## Runtime / P2 platform
+
+The platform is an OpenAI-compatible proxy with a durable SQLite flight recorder, YAML policy hot-reload, parallel detector execution, per-tier deadlines, streaming oversight, and a reproducible evaluation harness.
+
+### Local run
+
+```bash
+python -m controlplane.proxy
+```
+
+The default backend is the built-in mock model. Set `CONTROLPLANE_BACKEND=upstream` and `CONTROLPLANE_UPSTREAM_BASE_URL` for an OpenAI-compatible upstream.
+
+### Evaluation
+
+```bash
+make eval
+```
+
+This regenerates the evaluation report and prints ControlPlane vs verify-all vs verify-none metrics, p50/p95 latency, cost saved, safety spend, and ECE.
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+Docker starts a standalone mock upstream model plus the ControlPlane proxy. The proxy is exposed on `http://localhost:8000`.

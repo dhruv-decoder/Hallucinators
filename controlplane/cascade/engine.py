@@ -57,6 +57,49 @@ class CascadeEngine:
         self.calibrators = calibrators or {}
         self.combine_strategy = combine_strategy
 
+    async def run_async(
+        self,
+        ctx: RequestContext,
+        *,
+        scrutiny: float = 1.0,
+        latency_budget_ms: float = 100.0,
+        tier_timeout_ms: dict[Tier, float] | None = None,
+    ) -> CascadeResult:
+        """Run the cascade with parallel detector fan-out inside each tier."""
+        from controlplane.cascade.async_engine import AsyncCascadeRunner
+
+        return await AsyncCascadeRunner(self).run(
+            ctx, scrutiny=scrutiny, latency_budget_ms=latency_budget_ms, tier_timeout_ms=tier_timeout_ms
+        )
+
+    def run_all(self, ctx: RequestContext) -> CascadeResult:
+        """Evaluation-only verify-all baseline: run every applicable detector up to policy ceilings."""
+        result = CascadeResult(request_id=ctx.request_id, use_case=ctx.use_case)
+        for cost_detector in self.cost_detectors:
+            try:
+                result.cost_opportunities.append(cost_detector.run(ctx))
+            except Exception:
+                continue
+        loss_before = loss_after = 0.0
+        for axis in _FAILURE_AXES:
+            probs=[]; signals=[]
+            ceiling=self.policy.tier_ceilings.get(axis, Tier.T2)
+            for detector in [d for d in self.detectors if d.axis == axis and d.tier <= ceiling]:
+                if not detector.applicable(ctx):
+                    result.trace.append(VoIStep(axis=axis, detector=detector.name, tier=detector.tier, p_fail_before=voi.combine_probabilities(probs, self.combine_strategy), p_fail_after=None, voi=0.0, check_cost=0.0, ran=False, reason="not_applicable"))
+                    continue
+                sig=detector.run(ctx); sig.p_fail=self._calibrate(sig); signals.append(sig); result.signals.append(sig); probs.append(sig.p_fail)
+                p_after=voi.combine_probabilities(probs, self.combine_strategy)
+                result.trace.append(VoIStep(axis=axis, detector=detector.name, tier=detector.tier, p_fail_before=p_after, p_fail_after=p_after, voi=0.0, check_cost=sig.cost_usd, ran=True, reason="verify_all"))
+            p=voi.combine_probabilities(probs, self.combine_strategy)
+            outcome=AxisOutcome(axis=axis, p_fail=p, expected_loss=voi.expected_loss(p, self.policy.cost_fail.get(axis,1.0)), signals=signals)
+            result.per_axis[axis]=outcome
+            t0=voi.combine_probabilities([s.p_fail for s in signals if s.tier == Tier.T0], self.combine_strategy)
+            loss_before += t0*self.policy.cost_fail.get(axis,1.0); loss_after += p*self.policy.cost_fail.get(axis,1.0)
+        result.expected_loss_before=loss_before; result.expected_loss_after=loss_after
+        action,reason=decide_action(result.per_axis,self.policy); result.action=action; result.stopping_reason=f"verify_all action={action.value} ({reason})"
+        return result
+
     def _calibrate(self, signal: Signal) -> float:
         """Map a detector's raw score to a calibrated probability using its calibrator (identity default)."""
         calibrator = self.calibrators.get(signal.name, IdentityCalibrator())
@@ -154,6 +197,25 @@ class CascadeEngine:
                     )
                 )
                 p_after_t0 = p_current
+                continue
+
+            # Higher tiers: enforce the active policy's per-axis ceiling before the stopping rule.
+            ceiling = self.policy.tier_ceilings.get(axis, Tier.T2)
+            if detector.tier > ceiling:
+                p_now = voi.combine_probabilities(probs, self.combine_strategy)
+                result.trace.append(
+                    VoIStep(
+                        axis=axis,
+                        detector=detector.name,
+                        tier=detector.tier,
+                        p_fail_before=p_now,
+                        p_fail_after=None,
+                        voi=0.0,
+                        check_cost=0.0,
+                        ran=False,
+                        reason="policy_tier_ceiling",
+                    )
+                )
                 continue
 
             # Higher tiers: apply the stopping rule.

@@ -1,0 +1,58 @@
+version: 1
+profiles:
+  - id: default@balanced
+    use_case: default
+    geography: "*"
+    risk_appetite: balanced
+    cost_fail:
+      performance: 1.0
+      responsibility: 5.0
+    cost_mitigate:
+      performance: 0.05
+      responsibility: 0.10
+    lambda_latency: 0.000001
+    block_threshold: 0.85
+    escalate_threshold: 0.50
+    annotate_threshold: 0.20
+    tier_ceilings:
+      performance: 2
+      cost: 0
+      responsibility: 2
+
+  - id: support_bot@IN@balanced
+    use_case: support_bot
+    geography: IN
+    risk_appetite: balanced
+    cost_fail:
+      performance: 2.0
+      responsibility: 8.0
+    cost_mitigate:
+      performance: 0.05
+      responsibility: 0.10
+    lambda_latency: 0.000001
+    block_threshold: 0.85
+    escalate_threshold: 0.50
+    annotate_threshold: 0.20
+    tier_ceilings:
+      performance: 1
+      cost: 0
+      responsibility: 1
+
+  - id: internal_copilot@IN@strict
+    use_case: internal_copilot
+    geography: IN
+    risk_appetite: strict
+    cost_fail:
+      performance: 4.0
+      responsibility: 12.0
+    cost_mitigate:
+      performance: 0.05
+      responsibility: 0.15
+    lambda_latency: 0.0000005
+    block_threshold: 0.75
+    escalate_threshold: 0.35
+    annotate_threshold: 0.15
+    tier_ceilings:
+      performance: 2
+      cost: 0
+      responsibility: 2

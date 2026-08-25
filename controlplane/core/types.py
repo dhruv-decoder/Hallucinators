@@ -140,6 +140,12 @@ class PolicyProfile(BaseModel):
     """
 
     id: str = "default@balanced"
+    use_case: str = "default"
+    geography: str = "*"
+    risk_appetite: str = "balanced"
+    tier_ceilings: dict[Axis, Tier] = Field(
+        default_factory=lambda: {Axis.PERFORMANCE: Tier.T2, Axis.COST: Tier.T0, Axis.RESPONSIBILITY: Tier.T2}
+    )
     cost_fail: dict[Axis, float] = Field(
         default_factory=lambda: {Axis.PERFORMANCE: 1.0, Axis.RESPONSIBILITY: 5.0}
     )

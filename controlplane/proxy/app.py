@@ -150,6 +150,13 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             raise HTTPException(status_code=400, detail=f"unknown policy: {key}") from exc
         return {"active_policy": service.policy.id}
 
+    @app.post("/v1/oversight/policy/generate")
+    async def generate_policy(request: Request) -> dict:
+        """Generate a tuned oversight policy + projection from a use-case spec; ?apply=1 activates it live."""
+        body = await request.json()
+        apply = str(body.pop("apply", request.query_params.get("apply", "0"))).lower() in ("1", "true", "yes")
+        return service.generate_policy(body, apply=apply)
+
     @app.post("/v1/oversight/simulate")
     async def simulate() -> dict:
         """Fire the scripted demo workload through the real pipeline (the UI's 'Send demo traffic' button)."""

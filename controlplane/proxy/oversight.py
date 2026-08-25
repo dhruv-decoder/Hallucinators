@@ -148,6 +148,16 @@ class OversightService:
             return use_case, self.policies[use_case]
         return self.active_policy_key, self.policy
 
+    def generate_policy(self, spec_dict: dict, apply: bool = False) -> dict:
+        """Turn a use-case spec into a tuned policy + projection; optionally register & activate it live."""
+        from controlplane.policy import UseCaseSpec, generate_policy
+
+        gen = generate_policy(UseCaseSpec.from_dict(spec_dict))
+        if apply:
+            self.policies[gen.profile_id] = gen.profile
+            self.active_policy_key = gen.profile_id
+        return {**gen.to_dict(), "applied": apply}
+
     # -- the pipeline --------------------------------------------------------------------------------
     def oversee(self, prompt: str, generation: Generation) -> OverseeResult:
         """Run the full inline oversight pipeline for one candidate generation."""

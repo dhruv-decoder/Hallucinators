@@ -32,6 +32,29 @@ def _normalize(prompt: str) -> str:
     return " ".join(prompt.lower().split())
 
 
+# Flagship -> cheaper model for a genuine route-down (used by the proxy to actually invoke the cheaper model).
+_ROUTE_TARGET = {
+    "openai/gpt-oss-120b": "openai/gpt-oss-20b",
+    "gpt-4o": "gpt-4o-mini",
+    "gpt-5": "gpt-5-mini",
+    "claude-opus-5": "claude-haiku-4.5",
+    "claude-sonnet-5": "claude-haiku-4.5",
+}
+
+
+def suggest_route_down(model: str | None, prompt: str, simple_word_limit: int = 40) -> str | None:
+    """Return a cheaper model to actually call for a simple prompt on a flagship, or None to keep the model.
+
+    "Simple" = short and free of complexity markers (code fences, proofs, multi-step analysis). This is the
+    same rule the ``ModelOverkillDetector`` uses to *recommend* route-down; the proxy uses it to *execute* one.
+    """
+    if not model or model not in _ROUTE_TARGET:
+        return None
+    if len(prompt.split()) > simple_word_limit or _COMPLEXITY_MARKERS.search(prompt):
+        return None
+    return _ROUTE_TARGET[model]
+
+
 def _is_flagship(model: str, ctx: RequestContext) -> bool:
     tier_hint = str(ctx.meta.get("model_tier", "")).lower()
     if tier_hint == "flagship":

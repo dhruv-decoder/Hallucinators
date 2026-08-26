@@ -77,6 +77,13 @@ majority path. This is the whole VoI thesis, on real data.
 **Still to do (P3):** RAGTruth (loader shipped), a license-checked PII/red-team set, and larger-n runs on the
 A100 for tight confidence intervals.
 
+### 3g. Real route-down (P0.2) — ✅ measured (Playground path)
+A simple prompt on a flagship is **actually served by the cheaper model** (not just booked). Verified: `gpt-4o`
++ "Where can I download the app?" → `served_by: gpt-4o-mini`, `routed_down: true`, avoided flagship
+≈$0.00056; a complex "prove/refactor SQL step by step" prompt keeps `gpt-4o` (quality guard). The cheaper
+call's cost is **measured**; the flagship cost is the avoided **counterfactual** (we don't call it). On the
+Groq path this routes `gpt-oss-120b`→`gpt-oss-20b`. Wired on the Playground path.
+
 ### 3f. Real cache bypass (P0.3) — ✅ measured (Playground path)
 A repeated `(prompt, model, context)` on `/v1/oversight/playground` reuses the stored generation and does **not**
 call the upstream again. Proof is the `upstream_calls` counter: call 1 → `upstream_calls=1, cache_hit=false`;

@@ -166,6 +166,7 @@ class OversightService:
         self.response_cache: dict[str, Generation] = {}
         self.upstream_calls = 0
         self.cache_hits = 0
+        self.route_down_events = 0  # times a flagship request was actually served by a cheaper model (P0.2)
 
     @staticmethod
     def cache_key(prompt: str, model: str | None, context: str | None) -> str:
@@ -423,6 +424,7 @@ class OversightService:
             "chain_valid": self.recorder.verify_chain(),
             "upstream_calls": self.upstream_calls,
             "cache_hits": self.cache_hits,
+            "route_down_events": self.route_down_events,
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
             "models": active_models(),

@@ -195,6 +195,19 @@ def test_playground_oversees_a_prompt(client: TestClient) -> None:
     assert client.post("/v1/oversight/playground", json={"prompt": ""}).status_code == 400
 
 
+def test_route_down_actually_serves_the_cheaper_model(client: TestClient) -> None:
+    # A simple prompt on a flagship is genuinely served by the cheaper model (P0.2), not just booked.
+    simple = {"prompt": "Where can I download the app?", "model": "gpt-4o"}
+    r = client.post("/v1/oversight/playground", json=simple).json()
+    assert r["routed_down"] is True
+    assert r["requested_model"] == "gpt-4o" and r["served_by"] == "gpt-4o-mini"
+    assert r["economics"]["route_down_avoided_flagship_usd"] > 0
+    # A complex prompt keeps the flagship (quality guard).
+    hard = {"prompt": "Write code to refactor this SQL and prove it step by step", "model": "gpt-4o"}
+    r2 = client.post("/v1/oversight/playground", json=hard).json()
+    assert r2["routed_down"] is False and r2["served_by"] == "gpt-4o"
+
+
 def test_cache_actually_bypasses_the_upstream_on_repeat(client: TestClient) -> None:
     # Two identical requests: the second must be served from cache without a new upstream call (P0.3).
     p = {"prompt": "What are the customer support hours?", "context": "Open 9-6.", "model": "gpt-4o"}

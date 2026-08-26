@@ -183,7 +183,10 @@ class OversightService:
             model=generation.model,
             input_tokens=generation.input_tokens,
             output_tokens=generation.output_tokens,
-            meta={"injected_failure": generation.injected_failure} if generation.injected_failure else {},
+            meta={
+                "token_source": generation.token_source,
+                **({"injected_failure": generation.injected_failure} if generation.injected_failure else {}),
+            },
         )
 
         # Detectors are pure -> run the (potentially slow) cascade outside the lock. Scrutiny is read from

@@ -287,12 +287,22 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
                 gen.retrieved_context = [context]
 
         res = await asyncio.to_thread(service.oversee, prompt, gen)
+        pnl = res.receipt.pnl
         return {
             "source": source,
             "model": gen.model,
             "candidate": gen.text,
             "final": res.final_text,
             "modified": res.applied.modified,
+            "economics": {
+                "input_tokens": gen.input_tokens,
+                "output_tokens": gen.output_tokens,
+                "token_source": pnl.token_source,  # "measured" on the real Groq path, else "estimated"
+                "model_cost_usd": round(pnl.model_cost_usd, 6),
+                "cost_saved_usd": round(pnl.cost_saved_usd, 6),
+                "safety_spend_usd": round(pnl.safety_spend_usd, 6),
+                "net_oversight_usd": round(pnl.net_usd, 6),
+            },
             "controlplane": _oversight_block(res).model_dump(mode="json"),
             "receipt": res.receipt.model_dump(mode="json"),
         }

@@ -181,10 +181,17 @@ class VoIStep(BaseModel):
 
 
 class PnlEntry(BaseModel):
-    """The Oversight P&L for a single request. ``net_usd`` negative means oversight paid for itself."""
+    """The Oversight P&L for a single request. ``net_usd`` negative means oversight paid for itself.
 
+    ``model_cost_usd`` is the base cost of the model call itself (tokens x price). On the live Playground path
+    the token counts come from the provider's ``usage`` (measured); ``cost_saved_usd`` and ``safety_spend_usd``
+    are still estimated (list price, nominal check cost) -- see the P&L ledger for the exact provenance.
+    """
+
+    model_cost_usd: float = 0.0
     cost_saved_usd: float = 0.0
     safety_spend_usd: float = 0.0
+    token_source: str = "estimated"  # "measured" when tokens come from a real provider's usage metadata
 
     @property
     def net_usd(self) -> float:

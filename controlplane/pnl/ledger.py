@@ -63,7 +63,14 @@ class PnlLedger:
         self.total_cost_saved += cost_saved
         self.total_safety_spend += safety_spend
         self.request_count += 1
-        return PnlEntry(cost_saved_usd=cost_saved, safety_spend_usd=safety_spend)
+        # ``model_cost_usd`` = tokens x price. On the live provider path the tokens are measured (from the
+        # provider's usage metadata, flagged in ctx.meta); on the simulated path they are estimated.
+        return PnlEntry(
+            model_cost_usd=base_cost,
+            cost_saved_usd=cost_saved,
+            safety_spend_usd=safety_spend,
+            token_source=str(ctx.meta.get("token_source", "estimated")),
+        )
 
     def totals(self) -> PnlEntry:
         """Running P&L across every request booked so far."""

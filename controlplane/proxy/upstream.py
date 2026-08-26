@@ -35,6 +35,7 @@ class Generation:
     samples: list[str] = field(default_factory=list)
     use_case: str = "support_bot"
     injected_failure: str | None = None  # label for the demo/eval; None for clean answers
+    token_source: str = "estimated"  # "measured" when input/output_tokens came from a provider's usage
 
 
 @dataclass
@@ -253,6 +254,7 @@ class GroqUpstream:
         data = r.json()
         text = (data["choices"][0]["message"].get("content") or "").strip()
         usage = data.get("usage", {}) or {}
+        has_usage = "prompt_tokens" in usage and "completion_tokens" in usage
         return Generation(
             text=text,
             model=model,
@@ -260,6 +262,7 @@ class GroqUpstream:
             output_tokens=int(usage.get("completion_tokens", len(text.split()))),
             retrieved_context=[context] if context else [],
             use_case=use_case or "playground",
+            token_source="measured" if has_usage else "estimated",
         )
 
 

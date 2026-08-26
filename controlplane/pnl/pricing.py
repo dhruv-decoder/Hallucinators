@@ -24,6 +24,13 @@ class Pricing:
         "claude-opus-5": (0.005, 0.025),
         "claude-sonnet-5": (0.002, 0.010),
         "claude-haiku-4.5": (0.001, 0.005),
+        # Groq (OpenAI-compatible, used by the live Playground). Approximate provider list prices -- verify
+        # in docs/EVIDENCE.md before quoting. The free tier bills $0; these list rates are what a paying
+        # deployment would pay, so the P&L reflects real economics rather than $0.
+        "openai/gpt-oss-120b": (0.00015, 0.00060),
+        "openai/gpt-oss-20b": (0.00005, 0.00020),
+        "qwen/qwen3.6-27b": (0.00020, 0.00060),
+        "groq/compound": (0.00015, 0.00060),
         # Local / open-weights (Ollama / vLLM) and detector models run on our own hardware -> ~0 marginal.
         "local": (0.0, 0.0),
         "ollama": (0.0, 0.0),

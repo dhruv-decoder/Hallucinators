@@ -157,6 +157,43 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         apply = str(body.pop("apply", request.query_params.get("apply", "0"))).lower() in ("1", "true", "yes")
         return service.generate_policy(body, apply=apply)
 
+    @app.post("/v1/oversight/playground")
+    async def playground(request: Request) -> dict:
+        """Oversee a REAL model response to an arbitrary prompt (+ optional context) -- the live 'try it' path."""
+        from controlplane.proxy.upstream import GroqUpstream
+
+        body = await request.json()
+        prompt = (body.get("prompt") or "").strip()
+        context = (body.get("context") or "").strip() or None
+        model = body.get("model") or None
+        use_case = body.get("use_case") or "playground"
+        if not prompt:
+            raise HTTPException(status_code=400, detail="prompt is required")
+
+        source = "simulated"
+        gen = None
+        if GroqUpstream.available():
+            try:
+                gen = await asyncio.to_thread(GroqUpstream().generate, prompt, model, use_case, context)
+                source = "groq"
+            except Exception:  # noqa: BLE001 - fall back to the offline upstream if the API call fails
+                gen = None
+        if gen is None:
+            gen = upstream.generate(prompt, model or "controlplane-sim", use_case=use_case)
+            if context:
+                gen.retrieved_context = [context]
+
+        res = await asyncio.to_thread(service.oversee, prompt, gen)
+        return {
+            "source": source,
+            "model": gen.model,
+            "candidate": gen.text,
+            "final": res.final_text,
+            "modified": res.applied.modified,
+            "controlplane": _oversight_block(res).model_dump(mode="json"),
+            "receipt": res.receipt.model_dump(mode="json"),
+        }
+
     @app.post("/v1/oversight/simulate")
     async def simulate() -> dict:
         """Fire the scripted demo workload through the real pipeline (the UI's 'Send demo traffic' button)."""
@@ -197,6 +234,31 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
         return job.snapshot()
+
+    @app.get("/v1/oversight/conformal")
+    def conformal() -> dict:
+        """Conformal risk-control certificates on the labelled eval set (guaranteed escaped-failure rate)."""
+        from controlplane.cascade.conformal import risk_controlled_threshold
+        from controlplane.core.types import Axis, PolicyProfile
+        from controlplane.demo.run_demo import build_engine
+        from controlplane.eval.dataset import synthetic_labeled_dataset
+
+        engine = build_engine(PolicyProfile(id="conformal@eval"), use_models=False)
+        scores: list[float] = []
+        labels: list[bool] = []
+        for ex in synthetic_labeled_dataset():
+            outcome = engine.run(ex.ctx).per_axis.get(Axis.PERFORMANCE)
+            scores.append(outcome.p_fail if outcome else 0.0)
+            labels.append(bool(ex.labels.get(Axis.PERFORMANCE, False)))
+        certs = []
+        for alpha in (0.30, 0.20, 0.10):
+            c = risk_controlled_threshold(scores, labels, alpha)
+            certs.append({
+                "alpha": alpha, "valid": c.valid, "tau": round(c.tau, 4),
+                "empirical_fnr": round(c.empirical_fnr, 4), "risk_bound": round(c.risk_bound, 4),
+                "n_failures": c.n_failures, "statement": c.statement(),
+            })
+        return {"axis": "performance", "certificates": certs}
 
     @app.get("/v1/oversight/compliance")
     def compliance() -> dict:

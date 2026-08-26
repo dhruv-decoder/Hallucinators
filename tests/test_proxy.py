@@ -184,6 +184,26 @@ def test_healthz_reports_models(client: TestClient) -> None:
     assert set(h["models"]) == {"groundedness", "pii", "safety", "judge"}
 
 
+def test_playground_oversees_a_prompt(client: TestClient) -> None:
+    # No provider key in tests -> falls back to the offline upstream; still overseen end to end.
+    r = client.post("/v1/oversight/playground",
+                    json={"prompt": "Can you share the customer's payment details?", "model": "gpt-4o-mini"}).json()
+    assert r["source"] == "simulated"
+    assert "candidate" in r and "final" in r
+    assert r["controlplane"]["action"] == "block"
+    assert r["receipt"]["hash_self"]
+    assert client.post("/v1/oversight/playground", json={"prompt": ""}).status_code == 400
+
+
+def test_conformal_endpoint_returns_certificates(client: TestClient) -> None:
+    data = client.get("/v1/oversight/conformal").json()
+    assert data["axis"] == "performance"
+    alphas = {c["alpha"] for c in data["certificates"]}
+    assert alphas == {0.30, 0.20, 0.10}
+    for c in data["certificates"]:
+        assert "statement" in c and "valid" in c
+
+
 def test_benchmark_job_runs_with_progress(client: TestClient) -> None:
     import time
 

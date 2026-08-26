@@ -215,6 +215,54 @@ class LiteLLMUpstream:
         )
 
 
+class GroqUpstream:
+    """A real chat model via Groq's OpenAI-compatible API (free tier). Used by the live Playground.
+
+    Generates an actual assistant response for an arbitrary prompt (+ optional retrieved context), so oversight
+    runs on genuine model output rather than a scripted one. Direct httpx, no SDK. Available when GROQ_API_KEY
+    is set (a local .env is auto-loaded by the server).
+    """
+
+    name = "groq"
+    _BASE = "https://api.groq.com/openai/v1"
+
+    def __init__(self, model: str = "openai/gpt-oss-20b") -> None:
+        self.model = model
+
+    @staticmethod
+    def available() -> bool:
+        return bool(os.environ.get("GROQ_API_KEY"))
+
+    def generate(
+        self, prompt: str, model: str | None = None, use_case: str | None = None, context: str | None = None
+    ) -> Generation:
+        import httpx
+
+        model = model or self.model
+        messages = []
+        if context:
+            messages.append({"role": "system", "content": "Answer using only this source:\n" + context})
+        messages.append({"role": "user", "content": prompt})
+        r = httpx.post(
+            f"{self._BASE}/chat/completions",
+            headers={"Authorization": f"Bearer {os.environ.get('GROQ_API_KEY', '')}"},
+            json={"model": model, "messages": messages, "max_tokens": 1024, "temperature": 0.2},
+            timeout=40.0,
+        )
+        r.raise_for_status()
+        data = r.json()
+        text = (data["choices"][0]["message"].get("content") or "").strip()
+        usage = data.get("usage", {}) or {}
+        return Generation(
+            text=text,
+            model=model,
+            input_tokens=int(usage.get("prompt_tokens", len((context or "").split()) + len(prompt.split()))),
+            output_tokens=int(usage.get("completion_tokens", len(text.split()))),
+            retrieved_context=[context] if context else [],
+            use_case=use_case or "playground",
+        )
+
+
 def _has_provider_key() -> bool:
     return any(
         os.environ.get(k)

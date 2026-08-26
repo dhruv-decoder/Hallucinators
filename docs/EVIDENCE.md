@@ -77,6 +77,19 @@ majority path. This is the whole VoI thesis, on real data.
 **Still to do (P3):** RAGTruth (loader shipped), a license-checked PII/red-team set, and larger-n runs on the
 A100 for tight confidence intervals.
 
+### 3e. Baseline experiment — why adaptive (P0.5) — ✅ measured (`make experiment ARGS="--dataset halueval --limit 120 --models"`)
+Same workload/detectors/threshold; only the oversight policy changes. HHEM is the gate-able T1 check.
+
+| condition | perf F1 | expensive checks run | added latency |
+|---|---|---|---|
+| no oversight | 0.00 | 0 | 0 ms |
+| fixed-check (HHEM on every response) | 0.73 | 120 / 120 | 28,010 ms |
+| **ControlPlane (VoI-gated)** | **0.77** | **56 / 120** | **12,040 ms** |
+
+ControlPlane matches/slightly beats fixed-check safety while running **53% fewer** expensive checks and
+**~57% less** added latency — measured, on real data. (Cost column is $0 here because HHEM is local; the effect
+shows in checks-run and latency. A hosted judge would also show a dollar gap.)
+
 ### 3d. Live calibration (P0.4) — ✅ measured (`make calibration ARGS="--dataset halueval --limit 600"`)
 Platt calibration fit on a train split, ECE on the held-out test split (HaluEval, n=600):
 

@@ -73,3 +73,6 @@ lint:
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache **/__pycache__ *.egg-info build dist
+
+experiment:
+	python -m controlplane.eval.run_experiment $(ARGS)

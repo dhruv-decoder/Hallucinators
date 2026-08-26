@@ -50,12 +50,17 @@ class CascadeEngine:
         policy: PolicyProfile | None = None,
         calibrators: dict[str, Calibrator] | None = None,
         combine_strategy: str = "noisy_or",
+        always_run: bool = False,
     ) -> None:
         self.detectors = sorted(detectors, key=lambda d: int(d.tier))
         self.cost_detectors = cost_detectors or []
         self.policy = policy or PolicyProfile()
         self.calibrators = calibrators or {}
         self.combine_strategy = combine_strategy
+        # ``always_run`` = the "fixed-check" baseline: run every applicable detector regardless of the VoI
+        # stopping rule. Used only by the baseline experiment (eval/experiment.py) to show what ControlPlane's
+        # selective checking saves versus running every check on every response. The live service uses False.
+        self.always_run = always_run
 
     def _calibrate(self, signal: Signal) -> float:
         """Map a detector's raw score to a calibrated probability using its calibrator (identity default)."""
@@ -168,7 +173,7 @@ class CascadeEngine:
                 lambda_latency=self.policy.lambda_latency,
                 scrutiny=scrutiny,
             )
-            if not decision.run:
+            if not decision.run and not self.always_run:  # fixed-check baseline ignores the stopping rule
                 result.trace.append(
                     VoIStep(
                         axis=axis,

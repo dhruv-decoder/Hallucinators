@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import queue
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -44,6 +45,21 @@ from controlplane.proxy.oversight import OverseeResult, OversightService
 from controlplane.proxy.upstream import Generation, build_upstream
 
 _STATIC = Path(__file__).parent / "static"
+
+
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        return max(min(int(os.environ.get(name, default)), maximum), minimum)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        return max(min(float(os.environ.get(name, default)), maximum), minimum)
+    except ValueError:
+        return default
+
 
 
 def _oversight_block(res: OverseeResult) -> OversightBlock:
@@ -74,8 +90,19 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     service = OversightService(recorder_path=recorder_path)
     upstream = build_upstream(force_simulated=force_simulated)
     service.upstream = upstream  # lets bulk-simulate jobs generate candidates
+    max_concurrency = _env_int("CONTROLPLANE_MAX_CONCURRENCY", 32, 1, 256)
+    queue_timeout_ms = _env_int("CONTROLPLANE_QUEUE_TIMEOUT_MS", 250, 10, 60_000)
+    upstream_timeout_s = _env_float("CONTROLPLANE_UPSTREAM_TIMEOUT_S", 30.0, 0.1, 300.0)
+    upstream_retries = _env_int("CONTROLPLANE_UPSTREAM_RETRIES", 1, 0, 3)
+    request_slots = asyncio.Semaphore(max_concurrency)
     app.state.service = service
     app.state.upstream = upstream
+    app.state.runtime_config = {
+        "max_concurrency": max_concurrency,
+        "queue_timeout_ms": queue_timeout_ms,
+        "upstream_timeout_s": upstream_timeout_s,
+        "upstream_retries": upstream_retries,
+    }
 
     # ---- OpenAI-compatible surface -----------------------------------------------------------------
     @app.get("/v1/models")
@@ -89,35 +116,111 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         }
 
     @app.post("/v1/chat/completions")
-    async def chat_completions(req: ChatCompletionRequest):
+    async def chat_completions(req: ChatCompletionRequest, request: Request):
+        request_id = request.headers.get("X-Request-ID") or f"req-{uuid.uuid4().hex[:12]}"
         prompt = req.last_user_prompt()
-        # Get the candidate from the upstream, then let the caller's own retrieved_context/samples override
-        # what the simulator supplied (a real RAG app passes its sources; the simulator fills them in).
-        gen = upstream.generate(prompt, req.model, use_case=req.use_case)
-        if req.retrieved_context:
-            gen.retrieved_context = req.retrieved_context
-        if req.samples:
-            gen.samples = req.samples
-        if req.use_case:
-            gen.use_case = req.use_case
 
-        if req.stream:
-            return StreamingResponse(
-                _stream_completion(service, gen, prompt, req.model),
-                media_type="text/event-stream",
+        try:
+            await asyncio.wait_for(request_slots.acquire(), timeout=queue_timeout_ms / 1000.0)
+        except TimeoutError as exc:
+            service.runtime.record_overload()
+            raise HTTPException(
+                status_code=503, detail="ControlPlane is busy; retry shortly", headers={"Retry-After": "1"}
+            ) from exc
+
+        service.runtime.request_started()
+        stream_handoff = False
+        try:
+            for attempt in range(upstream_retries + 1):
+                try:
+                    gen = await asyncio.wait_for(
+                        asyncio.to_thread(upstream.generate, prompt, req.model, req.use_case),
+                        timeout=upstream_timeout_s,
+                    )
+                    break
+                except Exception:
+                    if attempt >= upstream_retries:
+                        service.runtime.record_error()
+                        raise
+                    await asyncio.sleep(0.05 * (attempt + 1))
+
+            if req.retrieved_context:
+                gen.retrieved_context = req.retrieved_context
+            if req.samples:
+                gen.samples = req.samples
+            if req.use_case:
+                gen.use_case = req.use_case
+
+            if req.stream:
+                stream_handoff = True
+                async def guarded_stream():
+                    try:
+                        for chunk in _stream_completion(service, gen, prompt, req.model, request_id=request_id):
+                            yield chunk
+                    finally:
+                        service.runtime.request_finished()
+                        request_slots.release()
+
+                return StreamingResponse(
+                    guarded_stream(),
+                    media_type="text/event-stream",
+                    headers={"X-Request-ID": request_id},
+                )
+
+            res = await asyncio.to_thread(service.oversee, prompt, gen, request_id)
+            payload = chat_completion_response(
+                text=res.final_text,
+                model=req.model,
+                oversight=_oversight_block(res),
+                prompt_tokens=gen.input_tokens,
+                completion_tokens=gen.output_tokens,
             )
-
-        res = await asyncio.to_thread(service.oversee, prompt, gen)
-        payload = chat_completion_response(
-            text=res.final_text,
-            model=req.model,
-            oversight=_oversight_block(res),
-            prompt_tokens=gen.input_tokens,
-            completion_tokens=gen.output_tokens,
-        )
-        return JSONResponse(payload)
+            response = JSONResponse(payload, headers={"X-Request-ID": res.receipt.request_id})
+            return response
+        except HTTPException:
+            raise
+        except Exception as exc:
+            service.runtime.record_error()
+            raise HTTPException(status_code=502, detail=f"upstream/oversight failure: {exc}") from exc
+        finally:
+            if not stream_handoff:
+                service.runtime.request_finished()
+                request_slots.release()
 
     # ---- Oversight API (for the dashboard) ---------------------------------------------------------
+    @app.get("/v1/oversight/observability")
+    def observability() -> dict:
+        data = service.runtime.snapshot()
+        data["config"] = dict(app.state.runtime_config)
+        return data
+
+    @app.get("/v1/oversight/receipts/{request_id}/verify")
+    def verify_receipt(request_id: str) -> dict:
+        for r in reversed(service.recorder.receipts):
+            if r.request_id == request_id:
+                from controlplane.recorder.receipt import compute_hash
+                return {
+                    "request_id": request_id,
+                    "receipt_valid": compute_hash(r) == r.hash_self,
+                    "chain_valid": service.recorder.verify_chain(),
+                    "hash_self": r.hash_self,
+                    "hash_prev": r.hash_prev,
+                }
+        raise HTTPException(status_code=404, detail="receipt not found")
+
+    @app.get("/readyz")
+    def readyz() -> dict:
+        return {
+            "ready": True,
+            "upstream": upstream.name,
+            "policy_loaded": bool(service.policies),
+            "recorder": service.recorder is not None,
+        }
+
+    @app.post("/v1/oversight/jobs/runtime-probe")
+    def runtime_probe(n: int = 120, concurrency: int = 16) -> dict:
+        return service.start_runtime_probe(n=n, concurrency=concurrency).snapshot()
+
     @app.get("/v1/oversight/summary")
     def summary() -> dict:
         return service.summary()
@@ -314,7 +417,9 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 _ABORT_PII = RegexPiiDetector()
 
 
-def _stream_completion(service: OversightService, gen: Generation, prompt: str, model: str):
+def _stream_completion(
+    service: OversightService, gen: Generation, prompt: str, model: str, request_id: str | None = None
+):
     """Stream the candidate token-by-token with a mid-stream abort guard.
 
     The subtlety of a real streaming guard: you must catch a leak *before* the leaked tokens leave. A card
@@ -352,7 +457,7 @@ def _stream_completion(service: OversightService, gen: Generation, prompt: str, 
         yield _sse(chat_completion_chunk("".join(hold), model, chunk_id=chunk_id))
 
     # Finalise with the full pipeline (records the receipt, books P&L) against the true, untruncated response.
-    res = service.oversee(prompt, gen)
+    res = service.oversee(prompt, gen, request_id=request_id)
     if aborted:
         yield _sse(chat_completion_chunk("\n\n[ControlPlane aborted this response] " + res.final_text,
                                          model, chunk_id=chunk_id))

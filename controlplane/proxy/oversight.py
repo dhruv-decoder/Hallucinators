@@ -35,6 +35,7 @@ from controlplane.core.types import (
 from controlplane.pnl import PnlLedger
 from controlplane.proxy.actions import AppliedAction, apply_action
 from controlplane.proxy.jobs import Job, JobRunner
+from controlplane.proxy.observability import RuntimeStats
 from controlplane.proxy.upstream import Generation
 from controlplane.recorder import JsonlRecorder
 
@@ -137,6 +138,7 @@ class OversightService:
         self._lock = threading.Lock()
         self._request_seq = 0
         self.jobs = JobRunner()
+        self.runtime = RuntimeStats()
         self.upstream = None  # set by the app so bulk-simulate can generate candidates
 
     # -- policy --------------------------------------------------------------------------------------
@@ -166,13 +168,13 @@ class OversightService:
         return {**gen.to_dict(), "applied": apply}
 
     # -- the pipeline --------------------------------------------------------------------------------
-    def oversee(self, prompt: str, generation: Generation) -> OverseeResult:
+    def oversee(self, prompt: str, generation: Generation, request_id: str | None = None) -> OverseeResult:
         """Run the full inline oversight pipeline for one candidate generation."""
         import time
 
         policy_key, policy = self.policy_for(generation.use_case)
         ctx = RequestContext(
-            request_id=self._next_request_id(),
+            request_id=request_id or self._next_request_id(),
             use_case=generation.use_case,
             prompt=prompt,
             response=generation.text,
@@ -205,7 +207,7 @@ class OversightService:
                 self.thermostat.observe(risk_score(result))
             self._subscribers.publish(receipt)
 
-        return OverseeResult(
+        result_obj = OverseeResult(
             final_text=applied.text,
             receipt=receipt,
             applied=applied,
@@ -213,6 +215,8 @@ class OversightService:
             scrutiny=scrutiny,
             generation=generation,
         )
+        self.runtime.record_result(added_latency_ms, result_obj)
+        return result_obj
 
     def _next_request_id(self) -> str:
         with self._lock:
@@ -266,6 +270,47 @@ class OversightService:
 
         return self.jobs.start("simulate", total=total, target=_run)
 
+    def start_runtime_probe(self, n: int = 120, concurrency: int = 16) -> Job:
+        """Measure runtime throughput/latency using the real simulated pipeline without external calls."""
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        n = max(1, min(int(n), 1000))
+        concurrency = max(1, min(int(concurrency), 64))
+
+        def _run(job: Job) -> dict:
+            prompt = "What are your customer support hours?"
+            upstream = self.upstream
+            started = time.perf_counter()
+            latencies: list[float] = []
+
+            def one(_: int) -> float:
+                t0 = time.perf_counter()
+                gen = upstream.generate(prompt, "controlplane-sim", use_case="support_bot")
+                self.oversee(prompt, gen)
+                return (time.perf_counter() - t0) * 1000.0
+
+            with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                futures = [pool.submit(one, i) for i in range(n)]
+                for i, fut in enumerate(as_completed(futures), 1):
+                    latencies.append(fut.result())
+                    job.tick(1, message=f"completed {i:,}/{n:,} requests")
+
+            elapsed = time.perf_counter() - started
+            return {
+                "requests": n,
+                "concurrency": concurrency,
+                "elapsed_seconds": round(elapsed, 3),
+                "throughput_rps": round(n / elapsed, 2) if elapsed else 0.0,
+                "latency_ms": {
+                    "p50": round(RuntimeStats._percentile(latencies, 50), 3),
+                    "p95": round(RuntimeStats._percentile(latencies, 95), 3),
+                    "p99": round(RuntimeStats._percentile(latencies, 99), 3),
+                },
+            }
+
+        return self.jobs.start("runtime_probe", total=n, target=_run)
+
     # -- UI feeds ------------------------------------------------------------------------------------
     def subscribe(self) -> queue.Queue[VoIReceipt]:
         return self._subscribers.add()
@@ -295,4 +340,5 @@ class OversightService:
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
             "models": active_models(),
+            "runtime": self.runtime.snapshot(),
         }

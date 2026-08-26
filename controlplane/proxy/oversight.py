@@ -399,5 +399,8 @@ class OversightService:
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
             "models": active_models(),
-            "runtime": {**self.runtime.snapshot(), "config": {"max_concurrency": self.max_concurrency, "queue_timeout_ms": self.queue_timeout_ms}},
+            "runtime": {
+                **self.runtime.snapshot(),
+                "config": {"max_concurrency": self.max_concurrency, "queue_timeout_ms": self.queue_timeout_ms},
+            },
         }

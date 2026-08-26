@@ -90,7 +90,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     service = OversightService(recorder_path=recorder_path)
     upstream = build_upstream(force_simulated=force_simulated)
     service.upstream = upstream  # lets bulk-simulate jobs generate candidates
-    max_concurrency = _env_int("CONTROLPLANE_MAX_CONCURRENCY", 32, 1, 256)
+    # Concurrency admission control now lives on the service (service.max_concurrency / queue_timeout_ms).
     queue_timeout_ms = _env_int("CONTROLPLANE_QUEUE_TIMEOUT_MS", 250, 10, 60_000)
     upstream_timeout_s = _env_float("CONTROLPLANE_UPSTREAM_TIMEOUT_S", 30.0, 0.1, 300.0)
     upstream_retries = _env_int("CONTROLPLANE_UPSTREAM_RETRIES", 1, 0, 3)

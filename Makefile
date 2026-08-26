@@ -49,6 +49,9 @@ eval:
 eval-real:
 	python -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
 
+calibration:
+	python -m controlplane.eval.run_calibration $(ARGS)
+
 serve:
 	python -m controlplane.proxy
 

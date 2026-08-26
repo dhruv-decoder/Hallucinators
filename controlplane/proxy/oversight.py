@@ -15,6 +15,7 @@ corrupt the chain -- the detectors themselves are pure and run outside the lock.
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 from dataclasses import dataclass, field
@@ -115,12 +116,28 @@ class OversightService:
         self,
         recorder_path: str | None = "recorder_log.jsonl",
         use_thermostat: bool = True,
+        calibrate: bool | None = None,
     ) -> None:
+        # Fit per-detector calibrators from the labelled seed so live p_fail is calibrated (not the raw score),
+        # which is what the VoI arithmetic assumes. Opt out with CONTROLPLANE_CALIBRATE=off; safe fallback to
+        # identity if fitting fails. See cascade/calibrate_live.py.
+        self.calibrators: dict = {}
+        if calibrate is None:
+            calibrate = os.environ.get("CONTROLPLANE_CALIBRATE", "1").lower() not in ("0", "off", "false", "no")
+        if calibrate:
+            try:
+                from controlplane.cascade.calibrate_live import fit_live_calibrators
+                from controlplane.eval.dataset import synthetic_labeled_dataset
+
+                self.calibrators = fit_live_calibrators(synthetic_labeled_dataset())
+            except Exception:  # noqa: BLE001 - never let calibration fitting block startup
+                self.calibrators = {}
         # The factory picks the strongest detector stack available here (heuristics offline; HHEM / Presidio
         # / a T2 LLM judge when their deps or a backend are present). The cost cache is stateful -> one shared.
         self.engine = CascadeEngine(
             detectors=build_failure_detectors(),
             cost_detectors=build_cost_detectors(),
+            calibrators=self.calibrators,
         )
         self.ledger = PnlLedger()
         # A ``.db`` path selects the durable SQLite recorder; anything else uses the JSONL reference store.

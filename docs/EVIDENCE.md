@@ -77,6 +77,18 @@ majority path. This is the whole VoI thesis, on real data.
 **Still to do (P3):** RAGTruth (loader shipped), a license-checked PII/red-team set, and larger-n runs on the
 A100 for tight confidence intervals.
 
+### 3d. Live calibration (P0.4) — ✅ measured (`make calibration ARGS="--dataset halueval --limit 600"`)
+Platt calibration fit on a train split, ECE on the held-out test split (HaluEval, n=600):
+
+| detector | ECE raw | ECE calibrated | Δ |
+|---|---|---|---|
+| overconfidence | 0.532 | **0.067** | +0.465 |
+| groundedness_heuristic | 0.350 | **0.245** | +0.105 |
+
+The calibration path (`cascade/calibrate_live.py`) is wired into the live engine and activates on a large
+labelled set (with a no-signal guard); the 18-example demo seed falls back to identity, so live `p_fail` is
+raw-score there — stated honestly.
+
 ### 3c. Latency / throughput — ✅ measured (`POST /v1/oversight/jobs/benchmark`)
 Local cascade (T2 judge excluded — it fires only on the tail), N=1,500 on a laptop:
 **added latency p50 0.12 ms / p95 0.16 ms / p99 0.33 ms**, **~7,100 req/s**, 100% cleared at T0. At 50k

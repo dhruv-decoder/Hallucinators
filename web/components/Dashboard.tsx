@@ -327,6 +327,19 @@ function Configurator({ onApplied }: { onApplied: () => void }) {
   return (
     <div className="grid grid-cols-[380px_1fr] gap-4 max-lg:grid-cols-1">
       <Card title="Describe your use case" desc="ControlPlane maps these business facts to the value-of-information knobs — no manual tuning.">
+        <div className="mb-3">
+          <div className="mb-1 text-[12px] font-medium text-muted">Start from a preset</div>
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              ["EU fintech support", { use_case: "customer_support", weekly_volume: 50000, latency_budget: "realtime", risk_tolerance: "low", data_sensitivity: "regulated", geo: "EU" }],
+              ["US health copilot", { use_case: "internal_copilot", weekly_volume: 20000, latency_budget: "interactive", risk_tolerance: "low", data_sensitivity: "regulated", geo: "US" }],
+              ["Global agentic ops", { use_case: "agentic", weekly_volume: 100000, latency_budget: "interactive", risk_tolerance: "medium", data_sensitivity: "internal", geo: "global" }],
+              ["Batch analytics", { use_case: "decision_support", weekly_volume: 250000, latency_budget: "batch", risk_tolerance: "medium", data_sensitivity: "internal", geo: "EU" }],
+            ] as [string, UseCaseSpec][]).map(([label, s]) => (
+              <button key={label} className="rounded-md border border-line px-2 py-1 text-[11px] text-muted transition hover:border-accent hover:text-accent" onClick={() => setSpec(s)}>{label}</button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-col gap-3.5">
           <Field label="Use case" value={spec.use_case} onChange={set("use_case")} opts={[["customer_support", "Support bot"], ["internal_copilot", "Internal copilot"], ["decision_support", "Decision support"], ["agentic", "Agentic workflow"]]} />
           <Field label="Latency budget" value={spec.latency_budget} onChange={set("latency_budget")} hint="how fast must it respond" opts={[["realtime", "Real-time"], ["interactive", "Interactive"], ["batch", "Batch"]]} />

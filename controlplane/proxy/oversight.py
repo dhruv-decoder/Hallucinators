@@ -122,7 +122,14 @@ class OversightService:
             cost_detectors=build_cost_detectors(),
         )
         self.ledger = PnlLedger()
-        self.recorder = JsonlRecorder(path=recorder_path)
+        # A ``.db`` path selects the durable SQLite recorder; anything else uses the JSONL reference store.
+        # Both share the record / receipts / verify_chain interface, so everything downstream is unchanged.
+        if recorder_path and str(recorder_path).endswith(".db"):
+            from controlplane.recorder.sqlite_store import SqliteRecorder
+
+            self.recorder = SqliteRecorder(recorder_path)
+        else:
+            self.recorder = JsonlRecorder(path=recorder_path)
         self.policies = default_policies()
         self.active_policy_key = "support_bot"
         self.thermostat = Thermostat() if use_thermostat else None

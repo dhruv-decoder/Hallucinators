@@ -57,3 +57,46 @@ def test_runtime_probe_completes_and_reports_latency() -> None:
     assert result["concurrency"] == 4
     assert result["throughput_rps"] > 0
     assert result["latency_ms"]["p95"] >= result["latency_ms"]["p50"]
+
+def test_runtime_probe_reports_overload_when_client_exceeds_capacity() -> None:
+    client = _client()
+
+    started = client.post(
+        "/v1/oversight/jobs/runtime-probe?n=80&concurrency=64"
+    )
+
+    assert started.status_code == 200
+
+    job_id = started.json()["id"]
+
+    for _ in range(100):
+        snap = client.get(
+            f"/v1/oversight/jobs/{job_id}"
+        ).json()
+
+        if snap["status"] != "running":
+            break
+
+        time.sleep(0.02)
+
+    assert snap["status"] == "done"
+
+    result = snap["result"]
+
+    assert result["requests"] == 80
+    assert result["concurrency"] == 64
+    assert "rejected_overload" in result
+    assert result["rejected_overload"] >= 0
+    assert result["accepted"] + result["rejected_overload"] + result["errors"] == result["requests"]
+    assert result["throughput_rps"] > 0
+
+
+def test_readyz_reports_configured_concurrency() -> None:
+    client = _client()
+    response = client.get("/readyz")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["ready"] is True

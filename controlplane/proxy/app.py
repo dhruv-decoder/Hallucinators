@@ -94,12 +94,11 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     queue_timeout_ms = _env_int("CONTROLPLANE_QUEUE_TIMEOUT_MS", 250, 10, 60_000)
     upstream_timeout_s = _env_float("CONTROLPLANE_UPSTREAM_TIMEOUT_S", 30.0, 0.1, 300.0)
     upstream_retries = _env_int("CONTROLPLANE_UPSTREAM_RETRIES", 1, 0, 3)
-    request_slots = asyncio.Semaphore(max_concurrency)
     app.state.service = service
     app.state.upstream = upstream
     app.state.runtime_config = {
-        "max_concurrency": max_concurrency,
-        "queue_timeout_ms": queue_timeout_ms,
+        "max_concurrency": service.max_concurrency,
+        "queue_timeout_ms": service.queue_timeout_ms,
         "upstream_timeout_s": upstream_timeout_s,
         "upstream_retries": upstream_retries,
     }
@@ -120,13 +119,13 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         request_id = request.headers.get("X-Request-ID") or f"req-{uuid.uuid4().hex[:12]}"
         prompt = req.last_user_prompt()
 
-        try:
-            await asyncio.wait_for(request_slots.acquire(), timeout=queue_timeout_ms / 1000.0)
-        except TimeoutError as exc:
-            service.runtime.record_overload()
+        acquired = await asyncio.to_thread(service.acquire_request_slot, queue_timeout_ms)
+        if not acquired:
             raise HTTPException(
-                status_code=503, detail="ControlPlane is busy; retry shortly", headers={"Retry-After": "1"}
-            ) from exc
+                status_code=503,
+                detail="ControlPlane is busy; retry shortly",
+                headers={"Retry-After": "1"},
+            )
 
         service.runtime.request_started()
         stream_handoff = False
@@ -159,7 +158,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
                             yield chunk
                     finally:
                         service.runtime.request_finished()
-                        request_slots.release()
+                        service.release_request_slot()
 
                 return StreamingResponse(
                     guarded_stream(),
@@ -185,7 +184,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         finally:
             if not stream_handoff:
                 service.runtime.request_finished()
-                request_slots.release()
+                service.release_request_slot()
 
     # ---- Oversight API (for the dashboard) ---------------------------------------------------------
     @app.get("/v1/oversight/observability")

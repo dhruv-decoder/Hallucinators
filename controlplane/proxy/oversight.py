@@ -156,6 +156,9 @@ class OversightService:
         self._request_seq = 0
         self.jobs = JobRunner()
         self.runtime = RuntimeStats()
+        self.max_concurrency = max(1, int(os.environ.get("CONTROLPLANE_MAX_CONCURRENCY", "32")))
+        self.queue_timeout_ms = max(10, int(os.environ.get("CONTROLPLANE_QUEUE_TIMEOUT_MS", "250")))
+        self._request_slots = threading.BoundedSemaphore(self.max_concurrency)
         self.upstream = None  # set by the app so bulk-simulate can generate candidates
 
     # -- policy --------------------------------------------------------------------------------------
@@ -290,8 +293,20 @@ class OversightService:
 
         return self.jobs.start("simulate", total=total, target=_run)
 
+    def acquire_request_slot(self, wait_ms: int | None = None) -> bool:
+        """Acquire a shared admission-control slot for real traffic and runtime probes."""
+        timeout_ms = self.queue_timeout_ms if wait_ms is None else max(0, int(wait_ms))
+        acquired = self._request_slots.acquire(timeout=timeout_ms / 1000.0)
+        if not acquired:
+            self.runtime.record_overload()
+        return acquired
+
+    def release_request_slot(self) -> None:
+        """Release a previously acquired admission-control slot."""
+        self._request_slots.release()
+
     def start_runtime_probe(self, n: int = 120, concurrency: int = 16) -> Job:
-        """Measure runtime throughput/latency using the real simulated pipeline without external calls."""
+        """Measure the same bounded admission path used by live HTTP traffic."""
         import time
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -303,30 +318,54 @@ class OversightService:
             upstream = self.upstream
             started = time.perf_counter()
             latencies: list[float] = []
+            rejected = 0
+            errors = 0
 
-            def one(_: int) -> float:
+            def one(_: int):
+                if not self.acquire_request_slot(wait_ms=0):
+                    return ("rejected", 0.0, "concurrency limit reached")
+
+                self.runtime.request_started()
                 t0 = time.perf_counter()
-                gen = upstream.generate(prompt, "controlplane-sim", use_case="support_bot")
-                self.oversee(prompt, gen)
-                return (time.perf_counter() - t0) * 1000.0
+                try:
+                    gen = upstream.generate(prompt, "controlplane-sim", use_case="support_bot")
+                    self.oversee(prompt, gen)
+                    return ("ok", (time.perf_counter() - t0) * 1000.0, "")
+                except Exception as exc:  # pragma: no cover - defensive probe accounting
+                    self.runtime.record_error()
+                    return ("error", 0.0, str(exc))
+                finally:
+                    self.runtime.request_finished()
+                    self.release_request_slot()
 
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
                 futures = [pool.submit(one, i) for i in range(n)]
                 for i, fut in enumerate(as_completed(futures), 1):
-                    latencies.append(fut.result())
+                    status, latency, _ = fut.result()
+                    if status == "ok":
+                        latencies.append(latency)
+                    elif status == "rejected":
+                        rejected += 1
+                    else:
+                        errors += 1
                     job.tick(1, message=f"completed {i:,}/{n:,} requests")
 
             elapsed = time.perf_counter() - started
             return {
                 "requests": n,
                 "concurrency": concurrency,
+                "accepted": len(latencies),
+                "rejected_overload": rejected,
+                "errors": errors,
                 "elapsed_seconds": round(elapsed, 3),
-                "throughput_rps": round(n / elapsed, 2) if elapsed else 0.0,
+                "throughput_rps": round(len(latencies) / elapsed, 2) if elapsed else 0.0,
                 "latency_ms": {
                     "p50": round(RuntimeStats._percentile(latencies, 50), 3),
                     "p95": round(RuntimeStats._percentile(latencies, 95), 3),
                     "p99": round(RuntimeStats._percentile(latencies, 99), 3),
                 },
+                "configured_max_concurrency": self.max_concurrency,
+                "queue_timeout_ms": self.queue_timeout_ms,
             }
 
         return self.jobs.start("runtime_probe", total=n, target=_run)
@@ -360,5 +399,5 @@ class OversightService:
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
             "models": active_models(),
-            "runtime": self.runtime.snapshot(),
+            "runtime": {**self.runtime.snapshot(), "config": {"max_concurrency": self.max_concurrency, "queue_timeout_ms": self.queue_timeout_ms}},
         }

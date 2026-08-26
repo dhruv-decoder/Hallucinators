@@ -160,6 +160,31 @@ class OversightService:
         self.queue_timeout_ms = max(10, int(os.environ.get("CONTROLPLANE_QUEUE_TIMEOUT_MS", "250")))
         self._request_slots = threading.BoundedSemaphore(self.max_concurrency)
         self.upstream = None  # set by the app so bulk-simulate can generate candidates
+        # Real response cache: a repeated request reuses the stored generation and never calls the upstream
+        # (P0.3). Exact normalized (prompt, model, context) key -- the semantic upgrade is T2's. The counters
+        # prove the bypass: cache_hits go up while upstream_calls stays flat.
+        self.response_cache: dict[str, Generation] = {}
+        self.upstream_calls = 0
+        self.cache_hits = 0
+
+    @staticmethod
+    def cache_key(prompt: str, model: str | None, context: str | None) -> str:
+        norm = " ".join((prompt or "").lower().split())
+        return f"{norm}|{model or ''}|{' '.join((context or '').lower().split())}"
+
+    def generate_cached(self, key: str, gen_fn) -> tuple[Generation, bool]:
+        """Return ``(generation, cache_hit)``. On a hit the upstream ``gen_fn`` is NOT called (real bypass)."""
+        with self._lock:
+            cached = self.response_cache.get(key)
+        if cached is not None:
+            with self._lock:
+                self.cache_hits += 1
+            return cached, True
+        gen = gen_fn()  # the actual (possibly network) upstream call happens outside the lock
+        with self._lock:
+            self.response_cache[key] = gen
+            self.upstream_calls += 1
+        return gen, False
 
     # -- policy --------------------------------------------------------------------------------------
     @property
@@ -396,6 +421,8 @@ class OversightService:
             "cleared_at_t0_pct": round(100.0 * cleared_at_t0 / n, 1) if n else 100.0,
             "scrutiny": round(self.thermostat.scrutiny, 3) if self.thermostat else 1.0,
             "chain_valid": self.recorder.verify_chain(),
+            "upstream_calls": self.upstream_calls,
+            "cache_hits": self.cache_hits,
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
             "models": active_models(),

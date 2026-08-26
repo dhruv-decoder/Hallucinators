@@ -195,6 +195,18 @@ def test_playground_oversees_a_prompt(client: TestClient) -> None:
     assert client.post("/v1/oversight/playground", json={"prompt": ""}).status_code == 400
 
 
+def test_cache_actually_bypasses_the_upstream_on_repeat(client: TestClient) -> None:
+    # Two identical requests: the second must be served from cache without a new upstream call (P0.3).
+    p = {"prompt": "What are the customer support hours?", "context": "Open 9-6.", "model": "gpt-4o"}
+    r1 = client.post("/v1/oversight/playground", json=p).json()
+    r2 = client.post("/v1/oversight/playground", json=p).json()
+    assert r1["cache_hit"] is False and r2["cache_hit"] is True
+    # The upstream-call counter did not advance on the cache hit -> the model was genuinely not called.
+    assert r2["economics"]["upstream_calls"] == r1["economics"]["upstream_calls"]
+    assert r2["economics"]["cache_hits"] >= 1
+    assert r2["economics"]["model_cost_avoided_usd"] > 0
+
+
 def test_conformal_endpoint_returns_certificates(client: TestClient) -> None:
     data = client.get("/v1/oversight/conformal").json()
     assert data["axis"] == "performance"

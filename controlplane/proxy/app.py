@@ -272,18 +272,24 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         if not prompt:
             raise HTTPException(status_code=400, detail="prompt is required")
 
-        source = "simulated"
-        gen = None
-        if GroqUpstream.available():
-            try:
-                gen = await asyncio.to_thread(GroqUpstream().generate, prompt, model, use_case, context)
-                source = "groq"
-            except Exception:  # noqa: BLE001 - fall back to the offline upstream if the API call fails
-                gen = None
-        if gen is None:
-            gen = upstream.generate(prompt, model or "controlplane-sim", use_case=use_case)
+        def _generate():
+            if GroqUpstream.available():
+                try:
+                    return GroqUpstream().generate(prompt, model, use_case, context), "groq"
+                except Exception:  # noqa: BLE001 - fall back to the offline upstream if the API call fails
+                    pass
+            g = upstream.generate(prompt, model or "controlplane-sim", use_case=use_case)
             if context:
-                gen.retrieved_context = [context]
+                g.retrieved_context = [context]
+            return g, "simulated"
+
+        # Real cache bypass: a repeated (prompt, model, context) reuses the stored generation and never calls
+        # the upstream again -- the counters below prove it.
+        key = service.cache_key(prompt, model, context)
+        gen, cache_hit = await asyncio.to_thread(
+            service.generate_cached, key, lambda: _generate()[0]
+        )
+        source = "cache" if cache_hit else ("groq" if getattr(gen, "token_source", "") == "measured" else "simulated")
 
         res = await asyncio.to_thread(service.oversee, prompt, gen)
         pnl = res.receipt.pnl
@@ -293,14 +299,18 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             "candidate": gen.text,
             "final": res.final_text,
             "modified": res.applied.modified,
+            "cache_hit": cache_hit,
             "economics": {
                 "input_tokens": gen.input_tokens,
                 "output_tokens": gen.output_tokens,
                 "token_source": pnl.token_source,  # "measured" on the real Groq path, else "estimated"
-                "model_cost_usd": round(pnl.model_cost_usd, 6),
+                "model_cost_usd": 0.0 if cache_hit else round(pnl.model_cost_usd, 6),  # a hit spends $0 on the model
+                "model_cost_avoided_usd": round(pnl.model_cost_usd, 6) if cache_hit else 0.0,
                 "cost_saved_usd": round(pnl.cost_saved_usd, 6),
                 "safety_spend_usd": round(pnl.safety_spend_usd, 6),
                 "net_oversight_usd": round(pnl.net_usd, 6),
+                "upstream_calls": service.upstream_calls,
+                "cache_hits": service.cache_hits,
             },
             "controlplane": _oversight_block(res).model_dump(mode="json"),
             "receipt": res.receipt.model_dump(mode="json"),

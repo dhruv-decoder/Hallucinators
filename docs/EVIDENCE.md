@@ -77,6 +77,13 @@ majority path. This is the whole VoI thesis, on real data.
 **Still to do (P3):** RAGTruth (loader shipped), a license-checked PII/red-team set, and larger-n runs on the
 A100 for tight confidence intervals.
 
+### 3f. Real cache bypass (P0.3) — ✅ measured (Playground path)
+A repeated `(prompt, model, context)` on `/v1/oversight/playground` reuses the stored generation and does **not**
+call the upstream again. Proof is the `upstream_calls` counter: call 1 → `upstream_calls=1, cache_hit=false`;
+call 2 (identical) → `upstream_calls=1` (unchanged), `cache_hit=true`, `model_cost_avoided≈$0.0035`. Exact
+normalized-key cache in the service; the semantic (embedding) upgrade is T2's. Wired on the Playground path;
+the streaming `/chat/completions` path (with the concurrency/retry wrapper) is a follow-up to coordinate.
+
 ### 3e. Baseline experiment — why adaptive (P0.5) — ✅ measured (`make experiment ARGS="--dataset halueval --limit 120 --models"`)
 Same workload/detectors/threshold; only the oversight policy changes. HHEM is the gate-able T1 check.
 

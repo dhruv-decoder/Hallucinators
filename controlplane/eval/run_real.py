@@ -16,8 +16,20 @@ import sys
 from controlplane.core.types import Axis, PolicyProfile
 from controlplane.demo.run_demo import build_engine
 from controlplane.eval.datasets_real import LOADERS
-from controlplane.eval.harness import run_harness
+from controlplane.eval.harness import EvalReport, run_harness
+from controlplane.eval.metrics import bootstrap_f1_ci
 from controlplane.eval.run import _fmt
+
+
+def _fmt_ci(report: EvalReport, axis: Axis) -> str:
+    """The point-estimate line plus 95% CIs (Wilson for recall, bootstrap for F1) -- what a skeptic asks for."""
+    cm = report.controlplane[axis]
+    r_lo, r_hi = cm.recall_ci()
+    y_true, y_pred = report.raw[axis]
+    f_lo, f_hi = bootstrap_f1_ci(y_true, y_pred)
+    return f"{_fmt(cm)}\n" + " " * 19 + (
+        f"95% CI: recall [{r_lo:.2f}, {r_hi:.2f}]  F1 [{f_lo:.2f}, {f_hi:.2f}]  (n={cm.n})"
+    )
 
 
 def main() -> None:
@@ -50,7 +62,7 @@ def main() -> None:
     print("=" * 78)
     print(f"detector stack: {stack}   operating threshold tau={report.tau}\n")
     print("[performance / groundedness]")
-    print(f"  ControlPlane     {_fmt(report.controlplane[Axis.PERFORMANCE])}")
+    print(f"  ControlPlane     {_fmt_ci(report, Axis.PERFORMANCE)}")
     print(f"  no-oversight     {_fmt(report.baselines['no_oversight'][Axis.PERFORMANCE])}")
     print(f"  flag-everything  {_fmt(report.baselines['flag_everything'][Axis.PERFORMANCE])}")
     print(f"\n  cleared at T0: {report.cost['pct_cleared_at_t0']:.0f}%   "

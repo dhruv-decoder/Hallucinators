@@ -70,26 +70,55 @@ hallucinations (recall 0.19 — they reuse the source's words), which is exactly
 buy a model on the tail. HHEM lifts F1 0.30→0.76 and beats flag-everything, while staying cheap on the
 majority path. This is the whole VoI thesis, on real data.
 
+**Confidence intervals (P1.3):** `make eval-real` now prints a 95% CI on every point estimate — a **Wilson**
+interval for recall/precision and a **percentile bootstrap** (2,000 resamples, seeded) for F1 — so a skeptic
+sees the sampling noise, not just a number. Measured T0 run, n=300: `F1 = 0.31, 95% CI [0.22, 0.39]`,
+`recall = 0.19, 95% CI [0.14, 0.26]`. The intervals are wide at these n and tighten with more data (that is
+the point of reporting them). Code + tests: `eval/metrics.py::wilson_interval`/`bootstrap_f1_ci`,
+`tests/test_metrics_ci.py`.
+
 > Environment bug found & fixed: HHEM-2.1-Open's `trust_remote_code` model loads with **random weights on
 > `transformers` 5.x** (silent — only a "newly initialized" notice), giving F1≈0.29. Pinned `transformers<5`
 > (verified on 4.44.2). Numbers above are with the correct pin.
 
 **Still to do (P3):** RAGTruth (loader shipped), a license-checked PII/red-team set, and larger-n runs on the
-A100 for tight confidence intervals.
+A100 to tighten the confidence intervals above.
 
-### 3g. Real route-down (P0.2) — ✅ measured (Playground path)
+### 3g. Real route-down (P0.2) — ✅ measured (Playground + chat path)
 A simple prompt on a flagship is **actually served by the cheaper model** (not just booked). Verified: `gpt-4o`
 + "Where can I download the app?" → `served_by: gpt-4o-mini`, `routed_down: true`, avoided flagship
 ≈$0.00056; a complex "prove/refactor SQL step by step" prompt keeps `gpt-4o` (quality guard). The cheaper
 call's cost is **measured**; the flagship cost is the avoided **counterfactual** (we don't call it). On the
-Groq path this routes `gpt-oss-120b`→`gpt-oss-20b`. Wired on the Playground path.
+Groq path this routes `gpt-oss-120b`→`gpt-oss-20b`. Wired on the Playground path and the main `/chat/completions`.
+
+### 3h. Tiny RAG app, overseen end to end (P1.1) — ✅ reproducible (`make rag`)
+A real (if small) RAG app: a 5-doc policy corpus, a stemmed keyword retriever, and ControlPlane checking each
+answer against the **retrieved** context. Deterministic offline (`--live` uses real Groq). Two cases every run:
+"customer support hours" → retrieves the hours doc → grounded → **PASS**; "refund window" → the model
+over-claims *180 days* → checked against the retrieved 30-day policy → **AUTO_REPAIR** to
+"…within 30 days…", `180` never delivered, on a hash-chained receipt. Code: `controlplane/demo/run_rag.py`;
+tests: `tests/test_rag_demo.py` (retriever + grounded-pass + hallucination-repair).
+
+### 3i. Real tool-using agent, overseen live (P1.2) — ✅ reproducible (`make agent-live`)
+A genuine ReAct loop (`Thought/Action/Observation`) over a **real tool** (`lookup_policy` searches the corpus);
+the model's choices are the LLM's, the observations are the tool's — nothing pre-baked (offline a deterministic
+planner stands in for the LLM; `--live` uses Groq). The auditor re-scores **between** steps and aborts the
+moment the run is unrecoverable, so the later steps are never generated. Measured on the premium-refund
+scenario: step 0 grounded (`ok`, risk 0.08) → step 1 hallucinates a 365-day window (`flag`, risk 1.00, but
+recoverable — we don't abort on the first blip) → step 2 loops to "confirm" its invention (`STOP`, loop×2) →
+escalate to a human. Ran 3 steps vs 4 unsupervised; the wrong answer never reached the user. This is the
+same three-axis cascade as a single call, plus the trajectory-level loop/compounding signals. Code:
+`controlplane/agent/live_agent.py` + `controlplane/demo/run_live_agent.py`; tests: `tests/test_live_agent.py`.
 
 ### 3f. Real cache bypass (P0.3) — ✅ measured (Playground path)
 A repeated `(prompt, model, context)` on `/v1/oversight/playground` reuses the stored generation and does **not**
 call the upstream again. Proof is the `upstream_calls` counter: call 1 → `upstream_calls=1, cache_hit=false`;
 call 2 (identical) → `upstream_calls=1` (unchanged), `cache_hit=true`, `model_cost_avoided≈$0.0035`. Exact
-normalized-key cache in the service; the semantic (embedding) upgrade is T2's. Wired on the Playground path;
-the streaming `/chat/completions` path (with the concurrency/retry wrapper) is a follow-up to coordinate.
+normalized-key cache in the service; the semantic (embedding) upgrade is T2's. Wired on **both** the Playground
+path **and** the main `/chat/completions` path (inside the concurrency/retry wrapper): two identical chat
+completions give `upstream_calls=1, cache_hits=1`, and a simple flagship prompt gives `route_down_events=1`.
+Tests: `tests/test_proxy.py::test_cache_actually_bypasses_the_upstream_on_repeat` /
+`::test_route_down_actually_serves_the_cheaper_model`.
 
 ### 3e. Baseline experiment — why adaptive (P0.5) — ✅ measured (`make experiment ARGS="--dataset halueval --limit 120 --models"`)
 Same workload/detectors/threshold; only the oversight policy changes. HHEM is the gate-able T1 check.

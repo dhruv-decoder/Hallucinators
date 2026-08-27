@@ -34,6 +34,8 @@ class EvalReport:
     baselines: dict[str, dict[Axis, ConfusionMatrix]] = field(default_factory=dict)
     cost: dict[str, float] = field(default_factory=dict)
     detector_ece: dict[str, float] = field(default_factory=dict)
+    # Raw aligned (truth, prediction) per axis for ControlPlane, so callers can bootstrap CIs on any metric.
+    raw: dict[Axis, tuple[list[bool], list[bool]]] = field(default_factory=dict)
 
 
 def run_harness(
@@ -88,6 +90,8 @@ def run_harness(
         name: expected_calibration_error(np.array(det_scores[name]), np.array(det_labels[name]))
         for name in det_scores
     }
+    raw = {a: (y_true[a], y_pred[a]) for a in _FAILURE_AXES}
     return EvalReport(
-        n=n, tau=tau, controlplane=controlplane, baselines=baselines, cost=cost, detector_ece=detector_ece
+        n=n, tau=tau, controlplane=controlplane, baselines=baselines, cost=cost,
+        detector_ece=detector_ece, raw=raw,
     )

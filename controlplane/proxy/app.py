@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import queue
+import time
 import uuid
 from pathlib import Path
 
@@ -130,18 +131,32 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         service.runtime.request_started()
         stream_handoff = False
         try:
-            for attempt in range(upstream_retries + 1):
-                try:
-                    gen = await asyncio.wait_for(
-                        asyncio.to_thread(upstream.generate, prompt, req.model, req.use_case),
-                        timeout=upstream_timeout_s,
-                    )
-                    break
-                except Exception:
-                    if attempt >= upstream_retries:
-                        service.runtime.record_error()
-                        raise
-                    await asyncio.sleep(0.05 * (attempt + 1))
+            # Route-down (P0.2) + cache (P0.3) on the main path: for a simple prompt on a flagship, actually
+            # call a cheaper model; a repeated request reuses the stored generation and skips the upstream.
+            from controlplane.cascade.detectors.cost import suggest_route_down
+
+            ctx_str = "\n".join(req.retrieved_context) if req.retrieved_context else None
+            routed_to = suggest_route_down(req.model, prompt) if req.model else None
+            actual_model = routed_to or req.model
+            cache_key = service.cache_key(prompt, req.model, ctx_str)
+
+            def _gen():
+                for attempt in range(upstream_retries + 1):
+                    try:
+                        return upstream.generate(prompt, actual_model, req.use_case)
+                    except Exception:  # noqa: BLE001 - retried; re-raised on the last attempt
+                        if attempt >= upstream_retries:
+                            service.runtime.record_error()
+                            raise
+                        time.sleep(0.05 * (attempt + 1))
+                raise RuntimeError("upstream generation failed")
+
+            gen, cache_hit = await asyncio.wait_for(
+                asyncio.to_thread(service.generate_cached, cache_key, _gen),
+                timeout=upstream_timeout_s * (upstream_retries + 2),
+            )
+            if routed_to and not cache_hit:
+                service.route_down_events += 1
 
             if req.retrieved_context:
                 gen.retrieved_context = req.retrieved_context

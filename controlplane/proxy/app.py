@@ -88,6 +88,26 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Optional API-key auth on the /v1 surface. Off by default (open, so the demo just works); set
+    # CONTROLPLANE_API_KEY to require an OpenAI-style `Authorization: Bearer <key>` (or `x-api-key`) header
+    # on every /v1 call. Health (/readyz) and the dashboard/static UI stay open so probes and the browser
+    # app keep working. This is the enterprise "who is calling the gateway" control, not full IAM.
+    api_key = os.environ.get("CONTROLPLANE_API_KEY", "").strip()
+    if api_key:
+        @app.middleware("http")
+        async def require_api_key(request: Request, call_next):
+            if request.url.path.startswith("/v1/"):
+                header = request.headers.get("authorization", "")
+                token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+                token = token or request.headers.get("x-api-key", "").strip()
+                if token != api_key:
+                    return JSONResponse(
+                        {"error": {"message": "invalid or missing API key", "type": "unauthorized"}},
+                        status_code=401,
+                    )
+            return await call_next(request)
+
     service = OversightService(recorder_path=recorder_path)
     upstream = build_upstream(force_simulated=force_simulated)
     service.upstream = upstream  # lets bulk-simulate jobs generate candidates
@@ -138,7 +158,9 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             ctx_str = "\n".join(req.retrieved_context) if req.retrieved_context else None
             routed_to = suggest_route_down(req.model, prompt) if req.model else None
             actual_model = routed_to or req.model
-            cache_key = service.cache_key(prompt, req.model, ctx_str, req.use_case, service.policy_for(req.use_case)[1].id)
+            cache_key = service.cache_key(
+                prompt, req.model, ctx_str, req.use_case, service.policy_for(req.use_case)[1].id
+            )
 
             def _gen():
                 for attempt in range(upstream_retries + 1):
@@ -371,15 +393,36 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
     @app.post("/v1/oversight/simulate")
     async def simulate() -> dict:
-        """Fire the scripted demo workload through the real pipeline (the UI's 'Send demo traffic' button)."""
+        """Fire the scripted demo workload through the real pipeline (the UI's 'Send demo traffic' button).
+
+        Goes through the same real route-down + cache-bypass path as /chat/completions, so the demo P&L is
+        backed by genuine upstream-call reduction (upstream_calls stays flat on the repeated prompt).
+        """
         from controlplane.proxy.workload import demo_prompts
 
         produced = []
         for p in demo_prompts():
-            gen = upstream.generate(p["prompt"], p.get("model", "controlplane-sim"), use_case=p.get("use_case"))
-            res = await asyncio.to_thread(service.oversee, p["prompt"], gen)
+            res = await asyncio.to_thread(
+                service.generate_overseen, p["prompt"], p.get("model"), p.get("use_case")
+            )
             produced.append({"request_id": res.receipt.request_id, "action": res.applied.action.value})
-        return {"processed": len(produced), "results": produced}
+        return {
+            "processed": len(produced),
+            "results": produced,
+            "upstream_calls": service.upstream_calls,
+            "cache_hits": service.cache_hits,
+            "route_down_events": service.route_down_events,
+        }
+
+    @app.get("/v1/oversight/voi-contrast")
+    def voi_contrast_endpoint() -> dict:
+        """Same engine + policy: a safe response SKIPS the expensive check, an uncertain one BUYS it.
+
+        The clearest proof that oversight is adaptive. Deterministic; safe to show live.
+        """
+        from controlplane.cascade.voi_contrast import voi_contrast
+
+        return voi_contrast()
 
     @app.post("/v1/oversight/replay")
     async def replay(request: Request) -> dict:

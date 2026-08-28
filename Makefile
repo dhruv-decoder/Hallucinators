@@ -1,6 +1,6 @@
 # Blessed entry points. Everything a stranger needs to run the project lives here.
 
-.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live eval eval-real eval-eta conformal-real serve traffic web-install web-dev web-build lint clean
+.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live voi-contrast eval eval-real eval-eta conformal-real experiment calibration serve traffic web-install web-dev web-build lint clean
 
 help:
 	@echo "make install    - create .venv and install the core engine + dev tools"
@@ -13,6 +13,8 @@ help:
 	@echo "make agent      - run the agentic finale (an agent compounds a hallucination; auditor aborts it)"
 	@echo "make rag        - run the tiny RAG app overseen end-to-end (grounded PASS vs hallucination repaired)"
 	@echo "make agent-live - run a real ReAct tool-agent overseen live (add ARGS='--live' for real Groq)"
+	@echo "make voi-contrast - show the VoI rule SKIP a check on a safe response but BUY one on an uncertain one"
+	@echo "make experiment - no-oversight vs fixed-check vs ControlPlane (adaptive), with the model tier on"
 	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
 	@echo "make eval-real  - eval on a real benchmark (HaluEval), now with 95% CIs; add ARGS='--models' for HHEM"
 	@echo "make eval-eta   - fit detector informativeness η from leakage-safe HaluEval forced-check data"
@@ -58,6 +60,9 @@ rag:
 agent-live:
 	python -m controlplane.demo.run_live_agent $(ARGS)
 
+voi-contrast:
+	python -m controlplane.demo.run_voi_contrast
+
 eval:
 	python -m controlplane.eval.run
 
@@ -96,4 +101,5 @@ clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache **/__pycache__ *.egg-info build dist
 
 experiment:
-	python -m controlplane.eval.run_experiment $(ARGS)
+	python -m controlplane.eval.run_experiment --dataset synthetic --models $(ARGS)
+	@echo "\n  For the large-n version: make experiment ARGS=\"--dataset halueval --limit 400\""

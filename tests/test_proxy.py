@@ -131,6 +131,39 @@ def test_summary_reports_self_funding_and_valid_chain(client: TestClient) -> Non
     assert s["cleared_at_t0_pct"] <= 100.0
 
 
+def test_demo_traffic_uses_real_cache_bypass(client: TestClient) -> None:
+    # The demo workload repeats one prompt, so a real cache bypass must keep upstream_calls below the
+    # request count. Re-firing it should NOT increase upstream_calls at all (every prompt is now cached).
+    first = client.post("/v1/oversight/simulate").json()
+    assert first["cache_hits"] >= 1
+    assert first["upstream_calls"] < first["processed"]  # the repeat was served from cache, not the upstream
+    calls_after_first = first["upstream_calls"]
+    second = client.post("/v1/oversight/simulate").json()
+    assert second["upstream_calls"] == calls_after_first  # flat: nothing new hit the upstream
+    assert second["cache_hits"] > first["cache_hits"]  # but the bypass counter keeps climbing
+
+
+def test_voi_contrast_endpoint_shows_skip_and_buy(client: TestClient) -> None:
+    v = client.get("/v1/oversight/voi-contrast").json()
+    assert v["safe"]["bought_a_check"] is False
+    assert v["uncertain"]["bought_a_check"] is True
+    assert v["safe"]["action"] == "pass"
+
+
+def test_api_key_auth_gate(monkeypatch) -> None:
+    # Off by default: with no key configured, /v1 is open (the fixture client already proves this).
+    open_client = TestClient(create_app(recorder_path=None, force_simulated=True))
+    assert open_client.get("/v1/oversight/summary").status_code == 200
+
+    # With CONTROLPLANE_API_KEY set (read at app-build time), /v1 requires it; /readyz stays open.
+    monkeypatch.setenv("CONTROLPLANE_API_KEY", "secret123")
+    c = TestClient(create_app(recorder_path=None, force_simulated=True))
+    assert c.get("/v1/oversight/summary").status_code == 401
+    assert c.get("/v1/oversight/summary", headers={"Authorization": "Bearer nope"}).status_code == 401
+    assert c.get("/v1/oversight/summary", headers={"Authorization": "Bearer secret123"}).status_code == 200
+    assert c.get("/readyz").status_code == 200  # health probe is never gated
+
+
 def test_receipts_endpoints(client: TestClient) -> None:
     _chat(client, "What is the refund window?")
     recent = client.get("/v1/oversight/receipts?limit=10").json()["receipts"]
@@ -229,11 +262,16 @@ def test_semantic_cache_paraphrase_is_a_real_bypass(client: TestClient, monkeypa
     service.semantic_cache.mode = "semantic"
     service.semantic_cache._embedder = lambda _: np.array([1.0, 0.0])
 
-    first = client.post("/v1/oversight/playground", json={"prompt": "What are customer support hours?", "model": "gpt-4o"})
+    first = client.post(
+        "/v1/oversight/playground", json={"prompt": "What are customer support hours?", "model": "gpt-4o"}
+    )
     assert first.status_code == 200
     calls_after_first = first.json()["economics"]["upstream_calls"]
 
-    second = client.post("/v1/oversight/playground", json={"prompt": "Can you tell me the customer support hours?", "model": "gpt-4o"})
+    second = client.post(
+        "/v1/oversight/playground",
+        json={"prompt": "Can you tell me the customer support hours?", "model": "gpt-4o"},
+    )
     assert second.status_code == 200
     body = second.json()
     assert body["cache_hit"] is True

@@ -1,7 +1,8 @@
 """Build a conformal escaped-failure certificate from real public labelled data.
 
 Example:
-  python -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 --output artifacts/conformal_performance.json
+  python -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 \
+      --output artifacts/conformal_performance.json
 
 The certificate is fitted on a held-out calibration partition. It is a finite-sample expected conditional-FNR
 certificate for future failures that are exchangeable with the calibration failures; it is not a 1-alpha
@@ -13,11 +14,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from controlplane.cascade.conformal import risk_controlled_threshold
-from controlplane.cascade.engine import CascadeEngine
 from controlplane.core.types import Axis, PolicyProfile
 from controlplane.demo.run_demo import build_engine
 from controlplane.eval.datasets_real import LOADERS
@@ -83,7 +83,7 @@ def main() -> None:
 
     payload = {
         "version": 1,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "axis": "performance",
         "source": f"real_public_{args.dataset}",
         "score_source": "model-backed" if args.models else "heuristics-only",
@@ -98,7 +98,10 @@ def main() -> None:
     out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     print(f"Wrote {out}")
     for item in certs:
-        print(f"alpha={item['alpha']:.2f} valid={item['valid']} tau={item['tau']:.3f} bound={item['risk_bound']:.3f} holdout_fnr={item['holdout_fnr']}")
+        print(
+            f"alpha={item['alpha']:.2f} valid={item['valid']} tau={item['tau']:.3f} "
+            f"bound={item['risk_bound']:.3f} holdout_fnr={item['holdout_fnr']}"
+        )
 
 
 if __name__ == "__main__":

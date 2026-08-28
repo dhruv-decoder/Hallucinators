@@ -122,17 +122,26 @@ def main() -> None:
 
     holdout_metrics = _holdout_metrics(holdout, calibrators, eta=estimate.eta)
     manual_metrics = _holdout_metrics(holdout, calibrators, eta=estimate.prior)
-    save_artifact(args.output, {"hhem_groundedness": estimate}, dataset="HaluEval QA", fit_split="20%", holdout_split="20%")
+    save_artifact(
+        args.output, {"hhem_groundedness": estimate},
+        dataset="HaluEval QA", fit_split="20%", holdout_split="20%",
+    )
 
     print("Empirical detector informativeness")
-    print(f"  detector: HHEM groundedness")
+    print("  detector: HHEM groundedness")
     print(f"  manual eta: {estimate.prior:.3f}")
     print(f"  fitted eta: {estimate.eta:.3f}")
     print(f"  informative samples: {estimate.n_samples}")
     if ci:
         print(f"  bootstrap 95% CI: [{ci[0]:.3f}, {ci[1]:.3f}]")
-    print(f"  holdout manual:  HHEM checks={manual_metrics['hhem_checks']} F1={manual_metrics['f1']:.3f} recall={manual_metrics['recall']:.3f}")
-    print(f"  holdout learned: HHEM checks={holdout_metrics['hhem_checks']} F1={holdout_metrics['f1']:.3f} recall={holdout_metrics['recall']:.3f}")
+    print(
+        f"  holdout manual:  HHEM checks={manual_metrics['hhem_checks']} "
+        f"F1={manual_metrics['f1']:.3f} recall={manual_metrics['recall']:.3f}"
+    )
+    print(
+        f"  holdout learned: HHEM checks={holdout_metrics['hhem_checks']} "
+        f"F1={holdout_metrics['f1']:.3f} recall={holdout_metrics['recall']:.3f}"
+    )
     print(f"  artifact: {args.output}")
 
 

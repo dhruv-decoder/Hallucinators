@@ -146,7 +146,9 @@ class OversightService:
         try:
             from controlplane.cascade.informativeness import apply_artifact, load_artifact
 
-            self._learned_informativeness = apply_artifact(self.engine.detectors, load_artifact(self._informativeness_artifact))
+            self._learned_informativeness = apply_artifact(
+                self.engine.detectors, load_artifact(self._informativeness_artifact)
+            )
         except Exception:  # noqa: BLE001 - learned eta is an optional runtime enhancement
             self._learned_informativeness = {}
         self.ledger = PnlLedger()
@@ -267,7 +269,11 @@ class OversightService:
             if detector.name in self._learned_informativeness:
                 item["source"] = "offline_artifact"
             values[detector.name] = item
-        return {"artifact": self._informativeness_artifact, "loaded": bool(self._learned_informativeness), "detectors": values}
+        return {
+            "artifact": self._informativeness_artifact,
+            "loaded": bool(self._learned_informativeness),
+            "detectors": values,
+        }
 
     # -- policy --------------------------------------------------------------------------------------
     @property
@@ -386,6 +392,32 @@ class OversightService:
 
         return self.jobs.start("benchmark", total=n, target=lambda job: run_benchmark(job, n, weekly_volume))
 
+    def generate_overseen(self, prompt: str, model: str | None, use_case: str | None = None,
+                          request_id: str | None = None) -> OverseeResult:
+        """Generate + oversee one request through the real cache-bypass path (as /chat/completions uses).
+
+        A repeated request reuses the stored generation and never calls the upstream again, so the
+        demo-traffic P&L is backed by genuine upstream-call reduction: ``upstream_calls`` stays flat while
+        ``cache_hits`` grows -- a *measured* bypass, not just a booked estimate.
+
+        Route-down is left as the ledger's estimated recommendation here: on the *simulated* upstream the
+        cheaper model returns the same canned text and token counts, so there is no real cost difference to
+        measure. Route-down is genuinely executed (and its avoided-flagship cost shown as an explicit
+        counterfactual) only on the real-model path -- see the Playground / chat_completions handlers.
+        """
+        policy_id = self.policy_for(use_case)[1].id
+        key = self.cache_key(prompt, model, None, use_case, policy_id)
+        gen, _cache_hit = self.generate_cached(
+            key,
+            lambda: self.upstream.generate(prompt, model or "controlplane-sim", use_case=use_case),
+            prompt=prompt,
+            model=model,
+            context=None,
+            use_case=use_case,
+            policy_id=policy_id,
+        )
+        return self.oversee(prompt, gen, request_id)
+
     def start_bulk_simulate(self, n: int = 40) -> Job:
         """Replay the demo workload through the real pipeline ``n`` times, feeding the live feed + P&L."""
         from controlplane.proxy.workload import demo_prompts
@@ -394,11 +426,9 @@ class OversightService:
         total = n * len(prompts)
 
         def _run(job: Job) -> dict:
-            upstream = self.upstream
             for _ in range(n):
                 for p in prompts:
-                    gen = upstream.generate(p["prompt"], p.get("model", "controlplane-sim"), use_case=p.get("use_case"))
-                    self.oversee(p["prompt"], gen)
+                    self.generate_overseen(p["prompt"], p.get("model"), use_case=p.get("use_case"))
                     job.tick(1, message=f"processed {job.done + 1:,}/{total:,} interactions")
             return {"processed": total, **self.summary()}
 

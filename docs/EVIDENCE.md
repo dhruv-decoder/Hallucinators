@@ -133,7 +133,7 @@ ControlPlane matches/slightly beats fixed-check safety while running **53% fewer
 **~57% less** added latency — measured, on real data. (Cost column is $0 here because HHEM is local; the effect
 shows in checks-run and latency. A hosted judge would also show a dollar gap.)
 
-### 3d. Live calibration (P0.4) — ✅ measured (`make calibration ARGS="--dataset halueval --limit 600"`)
+### 3d. Calibration (P0.4) — ✅ measured **offline** (`make calibration ARGS="--dataset halueval --limit 600"`)
 Platt calibration fit on a train split, ECE on the held-out test split (HaluEval, n=600):
 
 | detector | ECE raw | ECE calibrated | Δ |
@@ -141,9 +141,13 @@ Platt calibration fit on a train split, ECE on the held-out test split (HaluEval
 | overconfidence | 0.532 | **0.067** | +0.465 |
 | groundedness_heuristic | 0.350 | **0.245** | +0.105 |
 
-The calibration path (`cascade/calibrate_live.py`) is wired into the live engine and activates on a large
-labelled set (with a no-signal guard); the 18-example demo seed falls back to identity, so live `p_fail` is
-raw-score there — stated honestly.
+**Scope — do not present as "live/real-time calibrated":** this ECE reduction is an **offline** measurement on
+a large labelled set. The path (`cascade/calibrate_live.py`) is *wired* into the service but only activates for a
+detector with ≥40 labelled points, both classes, and a no-signal guard. **The default running server loads only
+the 18-example seed, which meets none of those, so every detector falls back to identity and live `p_fail` is
+the raw detector score.** Calibrated live scoring requires starting the service against a large labelled split;
+out of the box it is uncalibrated by design (so tiny-data calibration can't distort the tuned demo actions).
+`test_calibrate_live.py` asserts the seed yields zero calibrators.
 
 ### 3c. Latency / throughput — ✅ measured (`POST /v1/oversight/jobs/benchmark`)
 Local cascade (T2 judge excluded — it fires only on the tail), N=1,500 on a laptop:

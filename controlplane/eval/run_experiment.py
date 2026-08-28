@@ -18,8 +18,14 @@ def main() -> None:
     parser.add_argument("--dataset", default="synthetic", choices=["synthetic", "halueval", "ragtruth"])
     parser.add_argument("--limit", type=int, default=400)
     parser.add_argument("--tau", type=float, default=0.5)
-    parser.add_argument("--models", action="store_true",
-                        help="add the model tier (HHEM) so there is an expensive check to gate")
+    # The model tier (HHEM at T1) is the expensive check the VoI rule gates. It is ON by default so the
+    # three conditions are actually distinguishable; without an expensive check, fixed-checks and
+    # ControlPlane are identical (nothing to skip) and the comparison is a null result. Opt out with
+    # --no-models to show that degenerate case deliberately.
+    parser.add_argument("--models", dest="models", action="store_true", default=True,
+                        help="add the model tier (HHEM) so there is an expensive check to gate (default)")
+    parser.add_argument("--no-models", dest="models", action="store_false",
+                        help="heuristics only; no expensive check to gate (fixed==ControlPlane, null result)")
     args = parser.parse_args()
 
     if args.dataset == "synthetic":
@@ -43,6 +49,14 @@ def main() -> None:
 
     cp, fx = res["controlplane"], res["fixed_checks"]
     saved = fx["expensive_checks_run"] - cp["expensive_checks_run"]
+    if fx["expensive_checks_run"] == 0:
+        # No expensive check ran in either condition -> nothing for the VoI rule to gate, so the two
+        # conditions are identical by construction. Flag it loudly rather than presenting a misleading tie.
+        print("\n  [!] No expensive check was available to gate (model tier off or unavailable), so "
+              "fixed-checks and\n      ControlPlane are identical here. Re-run with the model tier: "
+              "`--models` (needs the [ml] extra),\n      e.g. "
+              "`python -m controlplane.eval.run_experiment --dataset halueval --limit 400 --models`.")
+        return
     print(f"\n  ControlPlane ran {cp['expensive_checks_run']} expensive checks vs fixed-check's "
           f"{fx['expensive_checks_run']} ({saved} avoided), at recall "
           f"{macro_recall(cp['confusion']):.2f} vs {macro_recall(fx['confusion']):.2f}.")

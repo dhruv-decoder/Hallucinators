@@ -125,13 +125,28 @@ class SemanticCacheDetector(CostDetector):
         self._seen: set[str] = set()
 
     def assess(self, ctx: RequestContext) -> CostOpportunity:
+        # The proxy marks genuine hits in RequestContext.meta. This is authoritative because the upstream call
+        # was actually bypassed. Preserve the detector's exact-match fallback for direct engine/demo callers.
+        if bool(ctx.meta.get("cache_hit")):
+            detail = {
+                "cache": "hit",
+                "kind": ctx.meta.get("cache_hit_kind", "exact"),
+                "similarity": ctx.meta.get("cache_similarity"),
+            }
+            return CostOpportunity(
+                name=self.name,
+                tier=self.tier,
+                recommendation=CostAction.CACHE_HIT,
+                detail=detail,
+            )
+
         key = _normalize(ctx.prompt)
         if key and key in self._seen:
             return CostOpportunity(
                 name=self.name,
                 tier=self.tier,
                 recommendation=CostAction.CACHE_HIT,
-                detail={"cache": "hit"},
+                detail={"cache": "hit", "kind": "exact-detector"},
             )
         if key:
             self._seen.add(key)

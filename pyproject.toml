@@ -47,6 +47,10 @@ ml = [
   "transformers>=4.40,<5",
   "torch>=2.2",
 ]
+# Optional semantic response caching. Kept separate because sentence-transformers/torch are large; enabling it is a deliberate deployment choice.
+semantic-cache = [
+  "sentence-transformers>=3.0,<6",
+]
 # Real public-benchmark evaluation (HaluEval / RAGTruth). Optional; keeps the core install light.
 eval = [
   "datasets>=2.19",

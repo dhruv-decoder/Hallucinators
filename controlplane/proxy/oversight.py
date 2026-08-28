@@ -37,6 +37,7 @@ from controlplane.pnl import PnlLedger
 from controlplane.proxy.actions import AppliedAction, apply_action
 from controlplane.proxy.jobs import Job, JobRunner
 from controlplane.proxy.observability import RuntimeStats
+from controlplane.proxy.semantic_cache import SemanticResponseCache
 from controlplane.proxy.upstream import Generation
 from controlplane.recorder import JsonlRecorder
 
@@ -139,6 +140,15 @@ class OversightService:
             cost_detectors=build_cost_detectors(),
             calibrators=self.calibrators,
         )
+        self._informativeness_artifact = os.environ.get(
+            "CONTROLPLANE_INFORMATIVENESS_ARTIFACT", "artifacts/informativeness.json"
+        )
+        try:
+            from controlplane.cascade.informativeness import apply_artifact, load_artifact
+
+            self._learned_informativeness = apply_artifact(self.engine.detectors, load_artifact(self._informativeness_artifact))
+        except Exception:  # noqa: BLE001 - learned eta is an optional runtime enhancement
+            self._learned_informativeness = {}
         self.ledger = PnlLedger()
         # A ``.db`` path selects the durable SQLite recorder; anything else uses the JSONL reference store.
         # Both share the record / receipts / verify_chain interface, so everything downstream is unchanged.
@@ -163,29 +173,101 @@ class OversightService:
         # Real response cache: a repeated request reuses the stored generation and never calls the upstream
         # (P0.3). Exact normalized (prompt, model, context) key -- the semantic upgrade is T2's. The counters
         # prove the bypass: cache_hits go up while upstream_calls stays flat.
-        self.response_cache: dict[str, Generation] = {}
+        semantic_enabled = os.environ.get("CONTROLPLANE_SEMANTIC_CACHE", "0").lower() in ("1", "true", "yes", "on")
+        semantic_threshold = float(os.environ.get("CONTROLPLANE_SEMANTIC_CACHE_THRESHOLD", "0.90"))
+        cache_max_entries = int(os.environ.get("CONTROLPLANE_CACHE_MAX_ENTRIES", "2048"))
+        cache_ttl = float(os.environ.get("CONTROLPLANE_CACHE_TTL_SECONDS", "3600"))
+        semantic_model = os.environ.get(
+            "CONTROLPLANE_SEMANTIC_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+        )
+        self.response_cache: dict[str, Generation] = {}  # legacy exact-cache view kept for compatibility
+        self.semantic_cache = SemanticResponseCache(
+            enabled=semantic_enabled,
+            threshold=semantic_threshold,
+            max_entries=cache_max_entries,
+            ttl_seconds=cache_ttl,
+            model_name=semantic_model,
+        )
         self.upstream_calls = 0
         self.cache_hits = 0
+        self.exact_cache_hits = 0
+        self.semantic_cache_hits = 0
+        self.cache_misses = 0
         self.route_down_events = 0  # times a flagship request was actually served by a cheaper model (P0.2)
 
     @staticmethod
-    def cache_key(prompt: str, model: str | None, context: str | None) -> str:
-        norm = " ".join((prompt or "").lower().split())
-        return f"{norm}|{model or ''}|{' '.join((context or '').lower().split())}"
+    def cache_key(
+        prompt: str,
+        model: str | None,
+        context: str | None,
+        use_case: str | None = None,
+        policy_id: str | None = None,
+    ) -> str:
+        return SemanticResponseCache.exact_key(prompt, model, context, use_case, policy_id)
 
-    def generate_cached(self, key: str, gen_fn) -> tuple[Generation, bool]:
-        """Return ``(generation, cache_hit)``. On a hit the upstream ``gen_fn`` is NOT called (real bypass)."""
+    def generate_cached(
+        self,
+        key: str,
+        gen_fn,
+        *,
+        prompt: str | None = None,
+        model: str | None = None,
+        context: str | None = None,
+        use_case: str | None = None,
+        policy_id: str | None = None,
+    ) -> tuple[Generation, bool]:
+        """Return ``(generation, cache_hit)`` while genuinely bypassing upstream on compatible hits."""
+        if prompt is not None:
+            hit = self.semantic_cache.lookup(
+                prompt=prompt, model=model, context=context, use_case=use_case, policy_id=policy_id
+            )
+            if hit is not None:
+                with self._lock:
+                    self.cache_hits += 1
+                    if hit.kind == "semantic":
+                        self.semantic_cache_hits += 1
+                    else:
+                        self.exact_cache_hits += 1
+                return hit.generation, True
+
+        # Legacy exact-cache lookup remains as a safe compatibility path for callers that only supply key.
         with self._lock:
             cached = self.response_cache.get(key)
         if cached is not None:
             with self._lock:
                 self.cache_hits += 1
-            return cached, True
+                self.exact_cache_hits += 1
+            return Generation(
+                **{**cached.__dict__, "cache_hit": True, "cache_similarity": 1.0, "cache_hit_kind": "exact"}
+            ), True
+
+        self.cache_misses += 1
         gen = gen_fn()  # the actual (possibly network) upstream call happens outside the lock
+        gen.cache_hit = False
+        gen.cache_hit_kind = "miss"
+        if prompt is not None:
+            self.semantic_cache.store(
+                prompt=prompt,
+                model=model,
+                context=context,
+                use_case=use_case,
+                policy_id=policy_id,
+                generation=gen,
+            )
         with self._lock:
             self.response_cache[key] = gen
             self.upstream_calls += 1
         return gen, False
+
+    def informativeness_status(self) -> dict:
+        """Report manual vs learned detector informativeness without making runtime depend on the artifact."""
+        values = {}
+        for detector in self.engine.detectors:
+            item = {"runtime_eta": round(float(detector.informativeness), 4), "source": "manual_prior"}
+            if detector.name in self._learned_informativeness:
+                item["source"] = "offline_artifact"
+            values[detector.name] = item
+        return {"artifact": self._informativeness_artifact, "loaded": bool(self._learned_informativeness), "detectors": values}
 
     # -- policy --------------------------------------------------------------------------------------
     @property
@@ -231,6 +313,9 @@ class OversightService:
             output_tokens=generation.output_tokens,
             meta={
                 "token_source": generation.token_source,
+                "cache_hit": generation.cache_hit,
+                "cache_hit_kind": generation.cache_hit_kind,
+                "cache_similarity": generation.cache_similarity,
                 **({"injected_failure": generation.injected_failure} if generation.injected_failure else {}),
             },
         )
@@ -424,6 +509,10 @@ class OversightService:
             "chain_valid": self.recorder.verify_chain(),
             "upstream_calls": self.upstream_calls,
             "cache_hits": self.cache_hits,
+            "exact_cache_hits": self.exact_cache_hits,
+            "semantic_cache_hits": self.semantic_cache_hits,
+            "cache_misses": self.cache_misses,
+            "cache": self.semantic_cache.stats(),
             "route_down_events": self.route_down_events,
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},

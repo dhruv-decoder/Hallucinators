@@ -39,7 +39,7 @@ export interface AgentReceipt {
 }
 export interface ControlRow { framework: string; control: string; evidence: string; status: string }
 export interface PlaygroundResult {
-  source: string; model: string; candidate: string; final: string; modified: boolean;
+  source: string; model: string; candidate: string; final: string; modified: boolean; cache_hit?: boolean; cache_hit_kind?: string; cache_similarity?: number | null;
   controlplane: { action: Action; per_axis_p_fail: Partial<Record<Axis, number>>; stopping_reason: string; net_usd: number; added_latency_ms: number };
   receipt: Receipt;
 }
@@ -88,7 +88,7 @@ export const api = {
     fetch(`${API_BASE}/v1/oversight/playground`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     }).then((r) => r.json() as Promise<PlaygroundResult>),
-  conformal: () => jget<{ axis: string; certificates: { alpha: number; valid: boolean; tau: number; empirical_fnr: number; risk_bound: number; n_failures: number; statement: string }[] }>("/v1/oversight/conformal"),
+  conformal: () => jget<{ axis: string; source?: string; risk_definition?: string; assumption?: string; certificates: { alpha: number; valid: boolean; tau: number; empirical_fnr: number; risk_bound: number; n_failures: number; holdout_fnr?: number | null; statement: string }[] }>("/v1/oversight/conformal"),
   generatePolicy: (spec: UseCaseSpec, apply = false) =>
     fetch(`${API_BASE}/v1/oversight/policy/generate?apply=${apply ? 1 : 0}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(spec),

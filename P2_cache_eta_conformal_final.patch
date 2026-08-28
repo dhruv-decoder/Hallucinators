@@ -1,0 +1,1265 @@
+diff --git a/Makefile b/Makefile
+index 5b9e9f6..cd8fc7b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,10 +1,11 @@
+ # Blessed entry points. Everything a stranger needs to run the project lives here.
+ 
+-.PHONY: help install install-serve test demo whatif thermostat agent rag agent-live eval eval-real serve traffic web-install web-dev web-build lint clean
++.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live eval eval-real eval-eta conformal-real serve traffic web-install web-dev web-build lint clean
+ 
+ help:
+ 	@echo "make install    - create .venv and install the core engine + dev tools"
+ 	@echo "make install-serve - also install the proxy/gateway deps (FastAPI, uvicorn)"
++	@echo "make install-semantic-cache - install optional sentence-transformer embeddings for semantic response caching"
+ 	@echo "make test       - run the unit tests"
+ 	@echo "make demo       - run the end-to-end oversight demo on sample requests"
+ 	@echo "make whatif     - run the What-If/Replay comparison across oversight policies"
+@@ -14,6 +15,8 @@ help:
+ 	@echo "make agent-live - run a real ReAct tool-agent overseen live (add ARGS='--live' for real Groq)"
+ 	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
+ 	@echo "make eval-real  - eval on a real benchmark (HaluEval), now with 95% CIs; add ARGS='--models' for HHEM"
++	@echo "make eval-eta   - fit detector informativeness η from leakage-safe HaluEval forced-check data"
++	@echo "make conformal-real - build real-data escaped-failure conformal certificates"
+ 	@echo "make serve      - run The Tower: proxy + dashboard (:8000); serves the React UI if web/out exists, else lite"
+ 	@echo "make traffic    - fire the scripted demo workload at a running Tower (one-line base_url swap)"
+ 	@echo "make web-build  - build the Next.js UI to a static export so 'make serve' ships it as ONE service"
+@@ -30,6 +33,10 @@ install-serve:
+ 	. .venv/bin/activate && pip install -e ".[dev,serve]"
+ 	@echo "Proxy deps installed. Run: make serve"
+ 
++install-semantic-cache:
++	. .venv/bin/activate && pip install -e ".[dev,serve,semantic-cache]"
++	@echo "Semantic-cache embeddings installed. Enable with CONTROLPLANE_SEMANTIC_CACHE=1"
++
+ test:
+ 	pytest
+ 
+@@ -57,6 +64,12 @@ eval:
+ eval-real:
+ 	python -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
+ 
++eval-eta:
++	python -m controlplane.eval.run_eta $(ARGS)
++
++conformal-real:
++	python -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 $(ARGS)
++
+ calibration:
+ 	python -m controlplane.eval.run_calibration $(ARGS)
+ 
+diff --git a/controlplane/cascade/conformal.py b/controlplane/cascade/conformal.py
+index b6cf3d0..032d106 100644
+--- a/controlplane/cascade/conformal.py
++++ b/controlplane/cascade/conformal.py
+@@ -41,7 +41,7 @@ class RiskCertificate:
+         if not self.valid:
+             return f"cannot certify alpha={self.alpha:.2f}: only {self.n_failures} labelled failures"
+         return (
+-            f"escaped-failure rate guaranteed <= {self.alpha:.2f} "
++            f"expected conditional FNR <= {self.alpha:.2f} under exchangeability "
+             f"(empirical {self.empirical_fnr:.3f}, conformal bound {self.risk_bound:.3f}, "
+             f"n={self.n_failures} failures, flag at p_fail>={self.tau:.3f})"
+         )
+diff --git a/controlplane/cascade/detectors/cost.py b/controlplane/cascade/detectors/cost.py
+index 4ceda5f..6ee2cda 100644
+--- a/controlplane/cascade/detectors/cost.py
++++ b/controlplane/cascade/detectors/cost.py
+@@ -125,13 +125,28 @@ class SemanticCacheDetector(CostDetector):
+         self._seen: set[str] = set()
+ 
+     def assess(self, ctx: RequestContext) -> CostOpportunity:
++        # The proxy marks genuine hits in RequestContext.meta. This is authoritative because the upstream call
++        # was actually bypassed. Preserve the detector's exact-match fallback for direct engine/demo callers.
++        if bool(ctx.meta.get("cache_hit")):
++            detail = {
++                "cache": "hit",
++                "kind": ctx.meta.get("cache_hit_kind", "exact"),
++                "similarity": ctx.meta.get("cache_similarity"),
++            }
++            return CostOpportunity(
++                name=self.name,
++                tier=self.tier,
++                recommendation=CostAction.CACHE_HIT,
++                detail=detail,
++            )
++
+         key = _normalize(ctx.prompt)
+         if key and key in self._seen:
+             return CostOpportunity(
+                 name=self.name,
+                 tier=self.tier,
+                 recommendation=CostAction.CACHE_HIT,
+-                detail={"cache": "hit"},
++                detail={"cache": "hit", "kind": "exact-detector"},
+             )
+         if key:
+             self._seen.add(key)
+diff --git a/controlplane/cascade/informativeness.py b/controlplane/cascade/informativeness.py
+new file mode 100644
+index 0000000..2f9a14a
+--- /dev/null
++++ b/controlplane/cascade/informativeness.py
+@@ -0,0 +1,148 @@
++"""Offline empirical estimation of detector informativeness eta.
++
++Eta is the fraction of the perfect-information decision-value gain delivered by a detector. The estimator is
++run offline on forced-check labelled data to avoid learning only from checks selected by the current VoI rule.
++Artifacts carry source/split metadata and a manual prior fallback; runtime never depends on the artifact being
++present or valid.
++"""
++
++from __future__ import annotations
++
++import json
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from pathlib import Path
++
++
++@dataclass(frozen=True)
++class EtaEstimate:
++    detector: str
++    prior: float
++    eta: float
++    n_samples: int
++    numerator: float
++    denominator: float
++    method: str = "decision_value_gain_ratio"
++    source: str = "unknown"
++    split: str = "unknown"
++    min_samples: int = 100
++    fallback: bool = False
++    bootstrap_low: float | None = None
++    bootstrap_high: float | None = None
++
++
++def _row_eta(p_before: float, p_after: float, failure: bool, cost_fail: float, cost_mitigate: float) -> tuple[float, float]:
++    before = min(max(p_before, 0.0), 1.0) * cost_fail
++    before = min(before, cost_mitigate)
++    after = min(max(p_after, 0.0), 1.0) * cost_fail
++    after = min(after, cost_mitigate)
++    perfect = min(cost_fail, cost_mitigate) if failure else 0.0
++    return before - after, max(before - perfect, 0.0)
++
++
++def estimate_eta(
++    rows: list[tuple[float, float, bool]],
++    *,
++    prior: float,
++    min_samples: int = 100,
++    cost_fail: float = 1.0,
++    cost_mitigate: float = 0.05,
++) -> EtaEstimate:
++    """Estimate eta from forced detector outcomes using realized/available decision-value gain."""
++    numerator = 0.0
++    denominator = 0.0
++    used = 0
++    for p_before, p_after, failure in rows:
++        gain, available = _row_eta(p_before, p_after, failure, cost_fail, cost_mitigate)
++        if available <= 1e-12:
++            continue
++        numerator += gain
++        denominator += available
++        used += 1
++    if used < min_samples or denominator <= 1e-12:
++        return EtaEstimate("", prior, max(0.0, min(1.0, prior)), used, numerator, denominator, min_samples=min_samples, fallback=True)
++    eta = max(0.0, min(1.0, numerator / denominator))
++    return EtaEstimate("", prior, eta, used, numerator, denominator, min_samples=min_samples)
++
++
++def bootstrap_ci(
++    rows: list[tuple[float, float, bool]], *, seed: int = 0, n_boot: int = 1000, alpha: float = 0.05,
++    cost_fail: float = 1.0, cost_mitigate: float = 0.05,
++) -> tuple[float, float] | None:
++    """Bootstrap a CI for eta; returns None when fewer than 2 informative rows exist."""
++    informative = [r for r in rows if _row_eta(*r, cost_fail, cost_mitigate)[1] > 1e-12]
++    if len(informative) < 2:
++        return None
++    import numpy as np
++
++    rng = np.random.default_rng(seed)
++    arr = np.asarray(informative, dtype=object)
++    vals: list[float] = []
++    for _ in range(n_boot):
++        sample = arr[rng.integers(0, len(arr), size=len(arr))]
++        num = den = 0.0
++        for p_before, p_after, failure in sample.tolist():
++            gain, available = _row_eta(float(p_before), float(p_after), bool(failure), cost_fail, cost_mitigate)
++            num += gain
++            den += available
++        vals.append(max(0.0, min(1.0, num / den)) if den > 0 else 0.0)
++    return tuple(float(x) for x in np.quantile(vals, [alpha / 2, 1 - alpha / 2]))
++
++
++def save_artifact(path: str | Path, estimates: dict[str, EtaEstimate], *, dataset: str, fit_split: str, holdout_split: str) -> None:
++    payload = {
++        "version": 1,
++        "created_at": datetime.now(timezone.utc).isoformat(),
++        "method": "decision_value_gain_ratio",
++        "dataset": dataset,
++        "fit_split": fit_split,
++        "holdout_split": holdout_split,
++        "estimates": {
++            name: {
++                "prior": e.prior,
++                "eta": e.eta,
++                "n_samples": e.n_samples,
++                "numerator": e.numerator,
++                "denominator": e.denominator,
++                "source": e.source,
++                "split": e.split,
++                "min_samples": e.min_samples,
++                "fallback": e.fallback,
++                "bootstrap_low": e.bootstrap_low,
++                "bootstrap_high": e.bootstrap_high,
++            }
++            for name, e in estimates.items()
++        },
++    }
++    out = Path(path)
++    out.parent.mkdir(parents=True, exist_ok=True)
++    out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
++
++
++def load_artifact(path: str | Path) -> dict[str, dict]:
++    p = Path(path)
++    if not p.exists():
++        return {}
++    try:
++        data = json.loads(p.read_text(encoding="utf-8"))
++        estimates = data.get("estimates", {})
++        return estimates if isinstance(estimates, dict) else {}
++    except Exception:  # noqa: BLE001 - invalid artifacts must never break runtime
++        return {}
++
++
++def apply_artifact(detectors, estimates: dict[str, dict]) -> dict[str, float]:
++    """Apply only validated eta values to detector instances and return the values actually applied."""
++    applied: dict[str, float] = {}
++    for detector in detectors:
++        item = estimates.get(detector.name)
++        if not isinstance(item, dict) or item.get("fallback"):
++            continue
++        try:
++            eta = float(item["eta"])
++        except (KeyError, TypeError, ValueError):
++            continue
++        if 0.0 <= eta <= 1.0:
++            detector.informativeness = eta
++            applied[detector.name] = eta
++    return applied
+diff --git a/controlplane/eval/run_conformal_real.py b/controlplane/eval/run_conformal_real.py
+new file mode 100644
+index 0000000..5c89923
+--- /dev/null
++++ b/controlplane/eval/run_conformal_real.py
+@@ -0,0 +1,105 @@
++"""Build a conformal escaped-failure certificate from real public labelled data.
++
++Example:
++  python -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 --output artifacts/conformal_performance.json
++
++The certificate is fitted on a held-out calibration partition. It is a finite-sample expected conditional-FNR
++certificate for future failures that are exchangeable with the calibration failures; it is not a 1-alpha
++probability confidence statement and it does not certify distribution shift.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++from controlplane.cascade.conformal import risk_controlled_threshold
++from controlplane.cascade.engine import CascadeEngine
++from controlplane.core.types import Axis, PolicyProfile
++from controlplane.demo.run_demo import build_engine
++from controlplane.eval.datasets_real import LOADERS
++from controlplane.eval.splits import grouped_split
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--dataset", choices=sorted(LOADERS), default="halueval")
++    parser.add_argument("--limit", type=int, default=1000)
++    parser.add_argument("--output", default="artifacts/conformal_performance.json")
++    parser.add_argument("--models", action="store_true", help="use HHEM when available; otherwise heuristics-only")
++    args = parser.parse_args()
++
++    try:
++        dataset = LOADERS[args.dataset](limit=args.limit)
++    except Exception as exc:  # noqa: BLE001
++        print(f"Could not load '{args.dataset}': {exc}")
++        print("Install the optional eval dependency: pip install -e '.[eval]'")
++        sys.exit(1)
++    if len(dataset) < 20:
++        print("Need more labelled examples for conformal calibration.")
++        sys.exit(1)
++
++    _, calibration_set, holdout = grouped_split(dataset)
++    engine = build_engine(PolicyProfile(id=f"conformal@{args.dataset}"), use_models=args.models)
++    scores: list[float] = []
++    labels: list[bool] = []
++    for ex in calibration_set:
++        result = engine.run(ex.ctx)
++        outcome = result.per_axis.get(Axis.PERFORMANCE)
++        scores.append(outcome.p_fail if outcome else 0.0)
++        labels.append(bool(ex.labels.get(Axis.PERFORMANCE, False)))
++
++    certs = []
++    for alpha in (0.20, 0.10, 0.05):
++        c = risk_controlled_threshold(scores, labels, alpha)
++        certs.append({
++            "alpha": alpha,
++            "valid": c.valid,
++            "tau": round(c.tau, 6),
++            "empirical_fnr": round(c.empirical_fnr, 6),
++            "risk_bound": round(c.risk_bound, 6),
++            "n_failures": c.n_failures,
++            "statement": c.statement(),
++        })
++
++    # Holdout is deliberately not used to choose tau. Report a simple descriptive escaped-failure rate at each
++    # certified threshold so the artifact can show calibration vs held-out behavior without leaking into fitting.
++    holdout_scores: list[float] = []
++    holdout_labels: list[bool] = []
++    for ex in holdout:
++        result = engine.run(ex.ctx)
++        outcome = result.per_axis.get(Axis.PERFORMANCE)
++        holdout_scores.append(outcome.p_fail if outcome else 0.0)
++        holdout_labels.append(bool(ex.labels.get(Axis.PERFORMANCE, False)))
++    for item in certs:
++        if item["valid"]:
++            failures = [s for s, y in zip(holdout_scores, holdout_labels, strict=True) if y]
++            item["holdout_fnr"] = round(sum(s < item["tau"] for s in failures) / len(failures), 6) if failures else None
++        else:
++            item["holdout_fnr"] = None
++
++    payload = {
++        "version": 1,
++        "created_at": datetime.now(timezone.utc).isoformat(),
++        "axis": "performance",
++        "source": f"real_public_{args.dataset}",
++        "score_source": "model-backed" if args.models else "heuristics-only",
++        "calibration_split": "20% source-grouped partition",
++        "holdout_split": "20% source-grouped partition (descriptive only)",
++        "risk_definition": "P(pass | true failure)",
++        "assumption": "future failure examples are exchangeable with calibration failures",
++        "certificates": certs,
++    }
++    out = Path(args.output)
++    out.parent.mkdir(parents=True, exist_ok=True)
++    out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
++    print(f"Wrote {out}")
++    for item in certs:
++        print(f"alpha={item['alpha']:.2f} valid={item['valid']} tau={item['tau']:.3f} bound={item['risk_bound']:.3f} holdout_fnr={item['holdout_fnr']}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/controlplane/eval/run_eta.py b/controlplane/eval/run_eta.py
+new file mode 100644
+index 0000000..067ed36
+--- /dev/null
++++ b/controlplane/eval/run_eta.py
+@@ -0,0 +1,140 @@
++"""Fit empirical detector informativeness eta on HaluEval with a leakage-safe source split.
++
++Example:
++  python -m controlplane.eval.run_eta --limit 1000 --output artifacts/informativeness.json
++
++The HHEM detector is force-run on the eta-fit partition. A 60/20/20 source-level split is used for calibration,
++eta fitting and holdout ablation so paired correct/hallucinated HaluEval rows never cross partitions.
++"""
++
++from __future__ import annotations
++
++import argparse
++import sys
++
++from controlplane.cascade.calibrate_live import fit_live_calibrators
++from controlplane.cascade.calibration import PlattCalibrator
++from controlplane.cascade.detectors.factory import build_failure_detectors
++from controlplane.cascade.engine import CascadeEngine
++from controlplane.cascade.informativeness import EtaEstimate, bootstrap_ci, estimate_eta, save_artifact
++from controlplane.core.types import Axis, PolicyProfile
++from controlplane.eval.datasets_real import load_halueval_qa
++from controlplane.eval.metrics import confusion
++from controlplane.eval.splits import grouped_split
++
++
++def _hhem_calibrator(dataset):
++    import numpy as np
++    detectors = build_failure_detectors(use_hhem=True, use_presidio=False, use_judge=False)
++    engine = CascadeEngine(detectors, policy=PolicyProfile(id="eta-hhem-cal"), always_run=True)
++    scores: list[float] = []
++    labels: list[float] = []
++    for ex in dataset:
++        result = engine.run(ex.ctx)
++        for sig in result.signals:
++            if sig.name == "hhem_groundedness":
++                scores.append(sig.score)
++                labels.append(float(ex.labels.get(Axis.PERFORMANCE, False)))
++    if len(scores) < 40 or min(labels, default=0.0) == max(labels, default=0.0):
++        return None
++    cal = PlattCalibrator().fit(np.asarray(scores), np.asarray(labels))
++    return cal
++
++
++def _run_points(dataset, calibrators, *, eta: float | None = None):
++    from controlplane.core.types import PolicyProfile
++
++    detectors = build_failure_detectors(use_hhem=True, use_presidio=False, use_judge=False)
++    hhem = next((d for d in detectors if d.name == "hhem_groundedness"), None)
++    if hhem is None:
++        raise RuntimeError("HHEM is not available; install the [ml] extra and retry")
++    if eta is not None:
++        hhem.informativeness = eta
++    engine = CascadeEngine(detectors, policy=PolicyProfile(id="eta-fit"), calibrators=calibrators, always_run=True)
++    baseline_engine = CascadeEngine(
++        build_failure_detectors(use_hhem=False, use_presidio=False, use_judge=False),
++        policy=PolicyProfile(id="eta-baseline"),
++        calibrators=calibrators,
++    )
++    rows: list[tuple[float, float, bool]] = []
++    for ex in dataset:
++        baseline = baseline_engine.run(ex.ctx)
++        full = engine.run(ex.ctx)
++        before = baseline.per_axis.get(Axis.PERFORMANCE).p_fail if Axis.PERFORMANCE in baseline.per_axis else 0.0
++        after = full.per_axis.get(Axis.PERFORMANCE).p_fail if Axis.PERFORMANCE in full.per_axis else before
++        rows.append((before, after, bool(ex.labels.get(Axis.PERFORMANCE, False))))
++    return rows
++
++
++def _holdout_metrics(dataset, calibrators, *, eta: float):
++    detectors = build_failure_detectors(use_hhem=True, use_presidio=False, use_judge=False)
++    hhem = next(d for d in detectors if d.name == "hhem_groundedness")
++    hhem.informativeness = eta
++    engine = CascadeEngine(detectors, policy=PolicyProfile(id="eta-holdout"), calibrators=calibrators)
++    truth: list[bool] = []
++    pred: list[bool] = []
++    checks = 0
++    for ex in dataset:
++        result = engine.run(ex.ctx)
++        truth.append(bool(ex.labels.get(Axis.PERFORMANCE, False)))
++        out = result.per_axis.get(Axis.PERFORMANCE)
++        pred.append(bool(out and out.p_fail >= 0.5))
++        checks += sum(1 for s in result.trace if s.detector == "hhem_groundedness" and s.ran)
++    cm = confusion(truth, pred)
++    return {"hhem_checks": checks, "precision": cm.precision, "recall": cm.recall, "f1": cm.f1, "n": len(dataset)}
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--limit", type=int, default=1000)
++    parser.add_argument("--output", default="artifacts/informativeness.json")
++    parser.add_argument("--min-samples", type=int, default=100)
++    args = parser.parse_args()
++
++    try:
++        dataset = load_halueval_qa(limit=args.limit)
++    except Exception as exc:  # noqa: BLE001
++        print(f"Could not load HaluEval: {exc}")
++        print("Install the optional eval dependency: pip install -e '.[eval]'")
++        sys.exit(1)
++    if len(dataset) < 20:
++        print("Need more labelled examples for eta fitting.")
++        sys.exit(1)
++
++    calibration_set, eta_set, holdout = grouped_split(dataset)
++    calibrators = fit_live_calibrators(calibration_set, min_points=40)
++    hhem_cal = _hhem_calibrator(calibration_set)
++    if hhem_cal is None:
++        print("Could not fit HHEM calibration on the calibration split; no artifact written.")
++        sys.exit(1)
++    calibrators = {**calibrators, "hhem_groundedness": hhem_cal}
++
++    # Force HHEM on the eta set. The detector's manual prior is only a fallback; it is not used to select rows.
++    rows = _run_points(eta_set, calibrators)
++    estimate = estimate_eta(rows, prior=0.8, min_samples=args.min_samples)
++    ci = bootstrap_ci(rows)
++    estimate = EtaEstimate(
++        detector="hhem_groundedness", prior=estimate.prior, eta=estimate.eta, n_samples=estimate.n_samples,
++        numerator=estimate.numerator, denominator=estimate.denominator, source="HaluEval QA",
++        split="20% eta-fit partition", min_samples=estimate.min_samples, fallback=estimate.fallback,
++        bootstrap_low=ci[0] if ci else None, bootstrap_high=ci[1] if ci else None,
++    )
++
++    holdout_metrics = _holdout_metrics(holdout, calibrators, eta=estimate.eta)
++    manual_metrics = _holdout_metrics(holdout, calibrators, eta=estimate.prior)
++    save_artifact(args.output, {"hhem_groundedness": estimate}, dataset="HaluEval QA", fit_split="20%", holdout_split="20%")
++
++    print("Empirical detector informativeness")
++    print(f"  detector: HHEM groundedness")
++    print(f"  manual eta: {estimate.prior:.3f}")
++    print(f"  fitted eta: {estimate.eta:.3f}")
++    print(f"  informative samples: {estimate.n_samples}")
++    if ci:
++        print(f"  bootstrap 95% CI: [{ci[0]:.3f}, {ci[1]:.3f}]")
++    print(f"  holdout manual:  HHEM checks={manual_metrics['hhem_checks']} F1={manual_metrics['f1']:.3f} recall={manual_metrics['recall']:.3f}")
++    print(f"  holdout learned: HHEM checks={holdout_metrics['hhem_checks']} F1={holdout_metrics['f1']:.3f} recall={holdout_metrics['recall']:.3f}")
++    print(f"  artifact: {args.output}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/controlplane/eval/splits.py b/controlplane/eval/splits.py
+new file mode 100644
+index 0000000..2c657d6
+--- /dev/null
++++ b/controlplane/eval/splits.py
+@@ -0,0 +1,37 @@
++"""Leakage-safe deterministic splits for paired public hallucination datasets."""
++
++from __future__ import annotations
++
++from collections import defaultdict
++from collections.abc import Sequence
++
++from controlplane.eval.dataset import LabeledExample
++
++
++def source_group(request_id: str) -> str:
++    """Group paired HaluEval rows (``...-ok`` / ``...-hallu``) into one source item."""
++    rid = str(request_id or "")
++    if rid.startswith("halueval-"):
++        parts = rid.split("-")
++        if len(parts) >= 3:
++            return "-".join(parts[:2])
++    return rid
++
++
++def grouped_split(
++    dataset: Sequence[LabeledExample], fractions: tuple[float, float, float] = (0.6, 0.2, 0.2)
++) -> tuple[list[LabeledExample], list[LabeledExample], list[LabeledExample]]:
++    """Deterministically split by source group so paired examples never cross partitions."""
++    if len(fractions) != 3 or abs(sum(fractions) - 1.0) > 1e-9:
++        raise ValueError("fractions must contain three values summing to 1")
++    groups: dict[str, list[LabeledExample]] = defaultdict(list)
++    for ex in dataset:
++        groups[source_group(ex.ctx.request_id)].append(ex)
++    ordered = sorted(groups.items(), key=lambda kv: kv[0])
++    n_groups = len(ordered)
++    n_first = int(n_groups * fractions[0])
++    n_second = int(n_groups * (fractions[0] + fractions[1]))
++    first = [ex for _, rows in ordered[:n_first] for ex in rows]
++    second = [ex for _, rows in ordered[n_first:n_second] for ex in rows]
++    third = [ex for _, rows in ordered[n_second:] for ex in rows]
++    return first, second, third
+diff --git a/controlplane/proxy/app.py b/controlplane/proxy/app.py
+index d426cc2..0b95ebe 100644
+--- a/controlplane/proxy/app.py
++++ b/controlplane/proxy/app.py
+@@ -138,7 +138,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
+             ctx_str = "\n".join(req.retrieved_context) if req.retrieved_context else None
+             routed_to = suggest_route_down(req.model, prompt) if req.model else None
+             actual_model = routed_to or req.model
+-            cache_key = service.cache_key(prompt, req.model, ctx_str)
++            cache_key = service.cache_key(prompt, req.model, ctx_str, req.use_case, service.policy_for(req.use_case)[1].id)
+ 
+             def _gen():
+                 for attempt in range(upstream_retries + 1):
+@@ -152,7 +152,16 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
+                 raise RuntimeError("upstream generation failed")
+ 
+             gen, cache_hit = await asyncio.wait_for(
+-                asyncio.to_thread(service.generate_cached, cache_key, _gen),
++                asyncio.to_thread(
++                    service.generate_cached,
++                    cache_key,
++                    _gen,
++                    prompt=prompt,
++                    model=req.model,
++                    context=ctx_str,
++                    use_case=req.use_case,
++                    policy_id=service.policy_for(req.use_case)[1].id,
++                ),
+                 timeout=upstream_timeout_s * (upstream_retries + 2),
+             )
+             if routed_to and not cache_hit:
+@@ -308,8 +317,17 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
+ 
+         # Real cache bypass: a repeated (prompt, model, context) reuses the stored generation and never calls
+         # the upstream again -- the counters below prove it. Keyed on the *requested* model.
+-        key = service.cache_key(prompt, model, context)
+-        gen, cache_hit = await asyncio.to_thread(service.generate_cached, key, _generate)
++        key = service.cache_key(prompt, model, context, use_case, service.policy_for(use_case)[1].id)
++        gen, cache_hit = await asyncio.to_thread(
++            service.generate_cached,
++            key,
++            _generate,
++            prompt=prompt,
++            model=model,
++            context=context,
++            use_case=use_case,
++            policy_id=service.policy_for(use_case)[1].id,
++        )
+         if routed_to and not cache_hit:
+             service.route_down_events += 1
+         source = "cache" if cache_hit else ("groq" if getattr(gen, "token_source", "") == "measured" else "simulated")
+@@ -392,9 +410,33 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
+             raise HTTPException(status_code=404, detail="job not found")
+         return job.snapshot()
+ 
++    @app.get("/v1/oversight/cache")
++    def cache_status() -> dict:
++        """Expose bounded semantic-cache configuration and measured hit/miss counters."""
++        return {
++            **service.semantic_cache.stats(),
++            "upstream_calls": service.upstream_calls,
++            "cache_hits": service.cache_hits,
++            "exact_cache_hits": service.exact_cache_hits,
++            "semantic_cache_hits": service.semantic_cache_hits,
++            "cache_misses": service.cache_misses,
++        }
++
++    @app.get("/v1/oversight/informativeness")
++    def informativeness() -> dict:
++        """Return the empirical-eta artifact status and values currently used by the runtime."""
++        return service.informativeness_status()
++
+     @app.get("/v1/oversight/conformal")
+     def conformal() -> dict:
+-        """Conformal risk-control certificates on the labelled eval set (guaranteed escaped-failure rate)."""
++        """Return offline conformal risk certificates; prefer a real public-data artifact over the demo seed."""
++        artifact = Path(os.environ.get("CONTROLPLANE_CONFORMAL_ARTIFACT", "artifacts/conformal_performance.json"))
++        if artifact.exists():
++            try:
++                return json.loads(artifact.read_text(encoding="utf-8"))
++            except Exception:  # noqa: BLE001 - fall back to the deterministic demo certificate
++                pass
++
+         from controlplane.cascade.conformal import risk_controlled_threshold
+         from controlplane.core.types import Axis, PolicyProfile
+         from controlplane.demo.run_demo import build_engine
+@@ -415,7 +457,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
+                 "empirical_fnr": round(c.empirical_fnr, 4), "risk_bound": round(c.risk_bound, 4),
+                 "n_failures": c.n_failures, "statement": c.statement(),
+             })
+-        return {"axis": "performance", "certificates": certs}
++        return {"axis": "performance", "source": "synthetic_demo", "certificates": certs}
+ 
+     @app.get("/v1/oversight/compliance")
+     def compliance() -> dict:
+diff --git a/controlplane/proxy/oversight.py b/controlplane/proxy/oversight.py
+index b50f561..d33b3ab 100644
+--- a/controlplane/proxy/oversight.py
++++ b/controlplane/proxy/oversight.py
+@@ -37,6 +37,7 @@ from controlplane.pnl import PnlLedger
+ from controlplane.proxy.actions import AppliedAction, apply_action
+ from controlplane.proxy.jobs import Job, JobRunner
+ from controlplane.proxy.observability import RuntimeStats
++from controlplane.proxy.semantic_cache import SemanticResponseCache
+ from controlplane.proxy.upstream import Generation
+ from controlplane.recorder import JsonlRecorder
+ 
+@@ -139,6 +140,15 @@ class OversightService:
+             cost_detectors=build_cost_detectors(),
+             calibrators=self.calibrators,
+         )
++        self._informativeness_artifact = os.environ.get(
++            "CONTROLPLANE_INFORMATIVENESS_ARTIFACT", "artifacts/informativeness.json"
++        )
++        try:
++            from controlplane.cascade.informativeness import apply_artifact, load_artifact
++
++            self._learned_informativeness = apply_artifact(self.engine.detectors, load_artifact(self._informativeness_artifact))
++        except Exception:  # noqa: BLE001 - learned eta is an optional runtime enhancement
++            self._learned_informativeness = {}
+         self.ledger = PnlLedger()
+         # A ``.db`` path selects the durable SQLite recorder; anything else uses the JSONL reference store.
+         # Both share the record / receipts / verify_chain interface, so everything downstream is unchanged.
+@@ -163,30 +173,102 @@ class OversightService:
+         # Real response cache: a repeated request reuses the stored generation and never calls the upstream
+         # (P0.3). Exact normalized (prompt, model, context) key -- the semantic upgrade is T2's. The counters
+         # prove the bypass: cache_hits go up while upstream_calls stays flat.
+-        self.response_cache: dict[str, Generation] = {}
++        semantic_enabled = os.environ.get("CONTROLPLANE_SEMANTIC_CACHE", "0").lower() in ("1", "true", "yes", "on")
++        semantic_threshold = float(os.environ.get("CONTROLPLANE_SEMANTIC_CACHE_THRESHOLD", "0.90"))
++        cache_max_entries = int(os.environ.get("CONTROLPLANE_CACHE_MAX_ENTRIES", "2048"))
++        cache_ttl = float(os.environ.get("CONTROLPLANE_CACHE_TTL_SECONDS", "3600"))
++        semantic_model = os.environ.get(
++            "CONTROLPLANE_SEMANTIC_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
++        )
++        self.response_cache: dict[str, Generation] = {}  # legacy exact-cache view kept for compatibility
++        self.semantic_cache = SemanticResponseCache(
++            enabled=semantic_enabled,
++            threshold=semantic_threshold,
++            max_entries=cache_max_entries,
++            ttl_seconds=cache_ttl,
++            model_name=semantic_model,
++        )
+         self.upstream_calls = 0
+         self.cache_hits = 0
++        self.exact_cache_hits = 0
++        self.semantic_cache_hits = 0
++        self.cache_misses = 0
+         self.route_down_events = 0  # times a flagship request was actually served by a cheaper model (P0.2)
+ 
+     @staticmethod
+-    def cache_key(prompt: str, model: str | None, context: str | None) -> str:
+-        norm = " ".join((prompt or "").lower().split())
+-        return f"{norm}|{model or ''}|{' '.join((context or '').lower().split())}"
++    def cache_key(
++        prompt: str,
++        model: str | None,
++        context: str | None,
++        use_case: str | None = None,
++        policy_id: str | None = None,
++    ) -> str:
++        return SemanticResponseCache.exact_key(prompt, model, context, use_case, policy_id)
++
++    def generate_cached(
++        self,
++        key: str,
++        gen_fn,
++        *,
++        prompt: str | None = None,
++        model: str | None = None,
++        context: str | None = None,
++        use_case: str | None = None,
++        policy_id: str | None = None,
++    ) -> tuple[Generation, bool]:
++        """Return ``(generation, cache_hit)`` while genuinely bypassing upstream on compatible hits."""
++        if prompt is not None:
++            hit = self.semantic_cache.lookup(
++                prompt=prompt, model=model, context=context, use_case=use_case, policy_id=policy_id
++            )
++            if hit is not None:
++                with self._lock:
++                    self.cache_hits += 1
++                    if hit.kind == "semantic":
++                        self.semantic_cache_hits += 1
++                    else:
++                        self.exact_cache_hits += 1
++                return hit.generation, True
+ 
+-    def generate_cached(self, key: str, gen_fn) -> tuple[Generation, bool]:
+-        """Return ``(generation, cache_hit)``. On a hit the upstream ``gen_fn`` is NOT called (real bypass)."""
++        # Legacy exact-cache lookup remains as a safe compatibility path for callers that only supply key.
+         with self._lock:
+             cached = self.response_cache.get(key)
+         if cached is not None:
+             with self._lock:
+                 self.cache_hits += 1
+-            return cached, True
++                self.exact_cache_hits += 1
++            return Generation(
++                **{**cached.__dict__, "cache_hit": True, "cache_similarity": 1.0, "cache_hit_kind": "exact"}
++            ), True
++
++        self.cache_misses += 1
+         gen = gen_fn()  # the actual (possibly network) upstream call happens outside the lock
++        gen.cache_hit = False
++        gen.cache_hit_kind = "miss"
++        if prompt is not None:
++            self.semantic_cache.store(
++                prompt=prompt,
++                model=model,
++                context=context,
++                use_case=use_case,
++                policy_id=policy_id,
++                generation=gen,
++            )
+         with self._lock:
+             self.response_cache[key] = gen
+             self.upstream_calls += 1
+         return gen, False
+ 
++    def informativeness_status(self) -> dict:
++        """Report manual vs learned detector informativeness without making runtime depend on the artifact."""
++        values = {}
++        for detector in self.engine.detectors:
++            item = {"runtime_eta": round(float(detector.informativeness), 4), "source": "manual_prior"}
++            if detector.name in self._learned_informativeness:
++                item["source"] = "offline_artifact"
++            values[detector.name] = item
++        return {"artifact": self._informativeness_artifact, "loaded": bool(self._learned_informativeness), "detectors": values}
++
+     # -- policy --------------------------------------------------------------------------------------
+     @property
+     def policy(self) -> PolicyProfile:
+@@ -231,6 +313,9 @@ class OversightService:
+             output_tokens=generation.output_tokens,
+             meta={
+                 "token_source": generation.token_source,
++                "cache_hit": generation.cache_hit,
++                "cache_hit_kind": generation.cache_hit_kind,
++                "cache_similarity": generation.cache_similarity,
+                 **({"injected_failure": generation.injected_failure} if generation.injected_failure else {}),
+             },
+         )
+@@ -424,6 +509,10 @@ class OversightService:
+             "chain_valid": self.recorder.verify_chain(),
+             "upstream_calls": self.upstream_calls,
+             "cache_hits": self.cache_hits,
++            "exact_cache_hits": self.exact_cache_hits,
++            "semantic_cache_hits": self.semantic_cache_hits,
++            "cache_misses": self.cache_misses,
++            "cache": self.semantic_cache.stats(),
+             "route_down_events": self.route_down_events,
+             "active_policy": self.policy.id,
+             "policies": {k: v.id for k, v in self.policies.items()},
+diff --git a/controlplane/proxy/semantic_cache.py b/controlplane/proxy/semantic_cache.py
+new file mode 100644
+index 0000000..6cfbde3
+--- /dev/null
++++ b/controlplane/proxy/semantic_cache.py
+@@ -0,0 +1,227 @@
++"""Bounded exact + semantic response cache for genuine upstream-call avoidance.
++
++The cache is intentionally conservative: compatibility is enforced by the requested model, use-case,
++policy version and retrieved context; semantic similarity is considered only between otherwise compatible
++entries. The embedding implementation is optional and lazy so the default/offline service keeps its small
++footprint. A cache hit still flows through the normal oversight pipeline, so policy checks and audit receipts
++are not bypassed.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import threading
++import time
++from collections import OrderedDict
++from dataclasses import dataclass, replace
++from typing import Callable
++
++import numpy as np
++
++from controlplane.proxy.upstream import Generation
++
++
++@dataclass(frozen=True)
++class CacheLookup:
++    generation: Generation
++    kind: str  # "exact" or "semantic"
++    similarity: float
++
++
++@dataclass
++class _Entry:
++    generation: Generation
++    prompt_norm: str
++    context_norm: str
++    model: str
++    use_case: str
++    policy_id: str
++    embedding: np.ndarray | None
++    created_at: float
++
++
++class SemanticResponseCache:
++    """Thread-safe, bounded response cache with optional sentence-transformer similarity search."""
++
++    def __init__(
++        self,
++        *,
++        enabled: bool = False,
++        threshold: float = 0.90,
++        max_entries: int = 2048,
++        ttl_seconds: float = 3600.0,
++        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
++        embedding_fn: Callable[[str], np.ndarray] | None = None,
++    ) -> None:
++        self.enabled = bool(enabled)
++        self.threshold = max(0.50, min(float(threshold), 0.9999))
++        self.max_entries = max(1, int(max_entries))
++        self.ttl_seconds = max(0.0, float(ttl_seconds))
++        self.model_name = model_name
++        self._entries: OrderedDict[str, _Entry] = OrderedDict()
++        self._lock = threading.RLock()
++        self._embedder = embedding_fn
++        self.mode = "semantic" if self.enabled else "exact"
++
++    @staticmethod
++    def normalize(text: str | None) -> str:
++        return " ".join((text or "").lower().split())
++
++    @classmethod
++    def exact_key(
++        cls,
++        prompt: str,
++        model: str | None,
++        context: str | None,
++        use_case: str | None,
++        policy_id: str | None,
++    ) -> str:
++        payload = "\x1f".join(
++            [
++                cls.normalize(prompt),
++                cls.normalize(model),
++                cls.normalize(context),
++                cls.normalize(use_case),
++                cls.normalize(policy_id),
++            ]
++        )
++        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++    def _get_embedder(self) -> Callable[[str], np.ndarray] | None:
++        if not self.enabled:
++            return None
++        if self._embedder is not None:
++            return self._embedder
++        try:
++            from sentence_transformers import SentenceTransformer
++
++            model = SentenceTransformer(self.model_name)
++
++            def encode(text: str) -> np.ndarray:
++                vec = np.asarray(model.encode([text], normalize_embeddings=True)[0], dtype=float)
++                return vec
++
++            self._embedder = encode
++            return self._embedder
++        except Exception:  # noqa: BLE001 - semantic mode degrades safely to exact matching
++            self.enabled = False
++            self.mode = "exact-fallback"
++            return None
++
++    @staticmethod
++    def _similarity(a: np.ndarray, b: np.ndarray) -> float:
++        denom = float(np.linalg.norm(a) * np.linalg.norm(b))
++        if denom <= 0.0:
++            return 0.0
++        return float(np.dot(a, b) / denom)
++
++    def _expired(self, entry: _Entry, now: float) -> bool:
++        return self.ttl_seconds > 0.0 and (now - entry.created_at) > self.ttl_seconds
++
++    def lookup(
++        self,
++        *,
++        prompt: str,
++        model: str | None,
++        context: str | None,
++        use_case: str | None,
++        policy_id: str | None,
++    ) -> CacheLookup | None:
++        now = time.monotonic()
++        model_norm = self.normalize(model)
++        context_norm = self.normalize(context)
++        use_case_norm = self.normalize(use_case)
++        policy_norm = self.normalize(policy_id)
++        key = self.exact_key(prompt, model, context, use_case, policy_id)
++
++        with self._lock:
++            exact = self._entries.get(key)
++            if exact is not None:
++                if self._expired(exact, now):
++                    self._entries.pop(key, None)
++                else:
++                    self._entries.move_to_end(key)
++                    return CacheLookup(replace(exact.generation, cache_hit=True, cache_similarity=1.0, cache_hit_kind="exact"), "exact", 1.0)
++
++            embedder = self._get_embedder()
++            if embedder is None:
++                return None
++            query_embedding = embedder(self.normalize(prompt))
++            best_key: str | None = None
++            best_entry: _Entry | None = None
++            best_similarity = 0.0
++            for entry_key, entry in list(self._entries.items()):
++                if self._expired(entry, now):
++                    self._entries.pop(entry_key, None)
++                    continue
++                if (entry.model, entry.context_norm, entry.use_case, entry.policy_id) != (
++                    model_norm, context_norm, use_case_norm, policy_norm
++                ):
++                    continue
++                if entry.embedding is None:
++                    continue
++                sim = self._similarity(query_embedding, entry.embedding)
++                if sim > best_similarity:
++                    best_similarity = sim
++                    best_key = entry_key
++                    best_entry = entry
++
++            if best_entry is not None and best_key is not None and best_similarity >= self.threshold:
++                self._entries.move_to_end(best_key)
++                generation = replace(
++                    best_entry.generation,
++                    cache_hit=True,
++                    cache_similarity=round(best_similarity, 6),
++                    cache_hit_kind="semantic",
++                )
++                return CacheLookup(generation, "semantic", best_similarity)
++        return None
++
++    def store(
++        self,
++        *,
++        prompt: str,
++        model: str | None,
++        context: str | None,
++        use_case: str | None,
++        policy_id: str | None,
++        generation: Generation,
++    ) -> None:
++        prompt_norm = self.normalize(prompt)
++        context_norm = self.normalize(context)
++        model_norm = self.normalize(model)
++        use_case_norm = self.normalize(use_case)
++        policy_norm = self.normalize(policy_id)
++        embedding = None
++        embedder = self._get_embedder()
++        if embedder is not None:
++            embedding = embedder(prompt_norm)
++
++        key = self.exact_key(prompt, model, context, use_case, policy_id)
++        entry = _Entry(
++            generation=replace(generation, cache_hit=False, cache_similarity=None, cache_hit_kind="miss"),
++            prompt_norm=prompt_norm,
++            context_norm=context_norm,
++            model=model_norm,
++            use_case=use_case_norm,
++            policy_id=policy_norm,
++            embedding=embedding,
++            created_at=time.monotonic(),
++        )
++        with self._lock:
++            self._entries[key] = entry
++            self._entries.move_to_end(key)
++            while len(self._entries) > self.max_entries:
++                self._entries.popitem(last=False)
++
++    def stats(self) -> dict:
++        with self._lock:
++            return {
++                "mode": self.mode,
++                "enabled": self.enabled,
++                "threshold": round(self.threshold, 4),
++                "entries": len(self._entries),
++                "max_entries": self.max_entries,
++                "ttl_seconds": self.ttl_seconds,
++                "embedding_model": self.model_name if self.enabled else None,
++            }
+diff --git a/controlplane/proxy/upstream.py b/controlplane/proxy/upstream.py
+index 6df3e30..fafd9bc 100644
+--- a/controlplane/proxy/upstream.py
++++ b/controlplane/proxy/upstream.py
+@@ -36,6 +36,9 @@ class Generation:
+     use_case: str = "support_bot"
+     injected_failure: str | None = None  # label for the demo/eval; None for clean answers
+     token_source: str = "estimated"  # "measured" when input/output_tokens came from a provider's usage
++    cache_hit: bool = False
++    cache_similarity: float | None = None
++    cache_hit_kind: str = "miss"  # miss | exact | semantic
+ 
+ 
+ @dataclass
+diff --git a/pyproject.toml b/pyproject.toml
+index 2e74b47..068d0a2 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -47,6 +47,10 @@ ml = [
+   "transformers>=4.40,<5",
+   "torch>=2.2",
+ ]
++# Optional semantic response caching. Kept separate because sentence-transformers/torch are large; enabling it is a deliberate deployment choice.
++semantic-cache = [
++  "sentence-transformers>=3.0,<6",
++]
+ # Real public-benchmark evaluation (HaluEval / RAGTruth). Optional; keeps the core install light.
+ eval = [
+   "datasets>=2.19",
+diff --git a/tests/test_informativeness.py b/tests/test_informativeness.py
+new file mode 100644
+index 0000000..58f5687
+--- /dev/null
++++ b/tests/test_informativeness.py
+@@ -0,0 +1,70 @@
++"""Tests for offline detector-informativeness (eta) fitting and safe runtime artifacts."""
++
++from __future__ import annotations
++
++import json
++
++from controlplane.cascade.informativeness import EtaEstimate, apply_artifact, bootstrap_ci, estimate_eta, load_artifact, save_artifact
++from controlplane.cascade.detectors.base import Detector
++from controlplane.core.types import Axis, RequestContext, Tier
++
++
++class _Detector(Detector):
++    name = "test_detector"
++    axis = Axis.PERFORMANCE
++    tier = Tier.T1
++    informativeness = 0.8
++
++    def assess(self, ctx: RequestContext):
++        return 0.0, {}
++
++
++def test_eta_is_bounded_and_data_driven() -> None:
++    rows = [
++        (0.8, 0.2, True),
++        (0.7, 0.3, False),
++        (0.9, 0.4, True),
++    ] * 50
++    estimate = estimate_eta(rows, prior=0.8, min_samples=20)
++    assert estimate.fallback is False
++    assert 0.0 <= estimate.eta <= 1.0
++    assert estimate.n_samples >= 20
++
++
++def test_insufficient_samples_fall_back_to_manual_prior() -> None:
++    estimate = estimate_eta([(0.8, 0.2, True)] * 3, prior=0.73, min_samples=10)
++    assert estimate.fallback is True
++    assert estimate.eta == 0.73
++
++
++def test_eta_fit_is_deterministic_for_same_rows() -> None:
++    rows = [(0.8, 0.4, True), (0.2, 0.1, False)] * 50
++    a = estimate_eta(rows, prior=0.8, min_samples=20)
++    b = estimate_eta(rows, prior=0.8, min_samples=20)
++    assert a.eta == b.eta
++    assert a.numerator == b.numerator
++    assert a.denominator == b.denominator
++
++
++def test_eta_artifact_round_trip_and_runtime_override(tmp_path) -> None:
++    estimate = EtaEstimate(
++        detector="test_detector", prior=0.8, eta=0.61, n_samples=120,
++        numerator=1.0, denominator=1.64, source="test", split="fit",
++        min_samples=20, fallback=False, bootstrap_low=0.55, bootstrap_high=0.67,
++    )
++    path = tmp_path / "eta.json"
++    save_artifact(path, {estimate.detector: estimate}, dataset="test", fit_split="20%", holdout_split="20%")
++    data = load_artifact(path)
++    detector = _Detector()
++    applied = apply_artifact([detector], data)
++    assert applied == {"test_detector": 0.61}
++    assert detector.informativeness == 0.61
++    payload = json.loads(path.read_text())
++    assert payload["dataset"] == "test"
++    assert payload["estimates"]["test_detector"]["bootstrap_low"] == 0.55
++
++
++def test_bootstrap_ci_returns_bounded_interval() -> None:
++    rows = [(0.8, 0.3, True), (0.6, 0.1, False)] * 20
++    low, high = bootstrap_ci(rows, n_boot=200)
++    assert 0.0 <= low <= high <= 1.0
+diff --git a/tests/test_proxy.py b/tests/test_proxy.py
+index 8ea8b7f..f84feda 100644
+--- a/tests/test_proxy.py
++++ b/tests/test_proxy.py
+@@ -220,6 +220,28 @@ def test_cache_actually_bypasses_the_upstream_on_repeat(client: TestClient) -> N
+     assert r2["economics"]["model_cost_avoided_usd"] > 0
+ 
+ 
++
++def test_semantic_cache_paraphrase_is_a_real_bypass(client: TestClient, monkeypatch) -> None:
++    import numpy as np
++
++    service = client.app.state.service
++    service.semantic_cache.enabled = True
++    service.semantic_cache.mode = "semantic"
++    service.semantic_cache._embedder = lambda _: np.array([1.0, 0.0])
++
++    first = client.post("/v1/oversight/playground", json={"prompt": "What are customer support hours?", "model": "gpt-4o"})
++    assert first.status_code == 200
++    calls_after_first = first.json()["economics"]["upstream_calls"]
++
++    second = client.post("/v1/oversight/playground", json={"prompt": "Can you tell me the customer support hours?", "model": "gpt-4o"})
++    assert second.status_code == 200
++    body = second.json()
++    assert body["cache_hit"] is True
++    assert body["economics"]["upstream_calls"] == calls_after_first
++    assert body["receipt"]["cost_opportunities"][1]["recommendation"] == "cache_hit"
++    assert body["receipt"]["cost_opportunities"][1]["detail"]["kind"] == "semantic"
++
++
+ def test_conformal_endpoint_returns_certificates(client: TestClient) -> None:
+     data = client.get("/v1/oversight/conformal").json()
+     assert data["axis"] == "performance"
+diff --git a/tests/test_semantic_cache.py b/tests/test_semantic_cache.py
+new file mode 100644
+index 0000000..1ba4c7b
+--- /dev/null
++++ b/tests/test_semantic_cache.py
+@@ -0,0 +1,40 @@
++"""Tests for genuine semantic response-cache bypass and compatibility guards."""
++
++from __future__ import annotations
++
++import numpy as np
++
++from controlplane.proxy.semantic_cache import SemanticResponseCache
++from controlplane.proxy.upstream import Generation
++
++
++def _gen(text: str = "answer") -> Generation:
++    return Generation(text=text, model="gpt-4o", input_tokens=10, output_tokens=5, use_case="support_bot")
++
++
++def test_compatible_semantic_hit_returns_cached_generation_without_generation_logic() -> None:
++    cache = SemanticResponseCache(enabled=True, threshold=0.9, embedding_fn=lambda _: np.array([1.0, 0.0]))
++    first = _gen("cached")
++    cache.store(prompt="What are support hours?", model="gpt-4o", context="9-6", use_case="support_bot", policy_id="support@balanced", generation=first)
++
++    hit = cache.lookup(prompt="Can you tell me the support hours?", model="gpt-4o", context="9-6", use_case="support_bot", policy_id="support@balanced")
++    assert hit is not None
++    assert hit.kind == "semantic"
++    assert hit.generation.cache_hit is True
++    assert hit.generation.text == "cached"
++
++
++def test_model_context_use_case_or_policy_mismatch_is_a_miss() -> None:
++    cache = SemanticResponseCache(enabled=True, threshold=0.9, embedding_fn=lambda _: np.array([1.0, 0.0]))
++    cache.store(prompt="refund policy", model="gpt-4o", context="A", use_case="support_bot", policy_id="support@balanced", generation=_gen())
++    assert cache.lookup(prompt="refund policy", model="gpt-4o-mini", context="A", use_case="support_bot", policy_id="support@balanced") is None
++    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="B", use_case="support_bot", policy_id="support@balanced") is None
++    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="A", use_case="internal_copilot", policy_id="support@balanced") is None
++    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="A", use_case="support_bot", policy_id="support@strict") is None
++
++
++def test_exact_mode_does_not_require_embedding_backend() -> None:
++    cache = SemanticResponseCache(enabled=False)
++    cache.store(prompt="Hello", model="gpt-4o", context=None, use_case="support_bot", policy_id="p", generation=_gen())
++    hit = cache.lookup(prompt="hello", model="gpt-4o", context=None, use_case="support_bot", policy_id="p")
++    assert hit is not None and hit.kind == "exact"
+diff --git a/web/components/Dashboard.tsx b/web/components/Dashboard.tsx
+index b3bb145..f3a02ef 100644
+--- a/web/components/Dashboard.tsx
++++ b/web/components/Dashboard.tsx
+@@ -271,7 +271,7 @@ function Guarantee() {
+   return (
+     <div className="flex flex-col gap-4">
+       <Card title="Conformal risk control — a certificate on the escaped-failure rate"
+-        desc="Competitors give a calibrated score; we control the risk. For a target α, the threshold is set so the fraction of true failures that slip through is provably ≤ α with finite-sample validity (Angelopoulos; Mohri–Hashimoto). Calibrated on the labelled eval set.">
++        desc="For a target α, conformal risk control chooses a threshold whose expected conditional false-negative rate on future failures is bounded by α under exchangeability. This is a finite-sample risk guarantee, not a claim of distribution-shift robustness.">
+         {err ? <div className="text-faint">Guarantee unavailable.</div> : !data ? <div className="text-faint">Calibrating…</div> : (
+           <table className="w-full border-collapse text-sm">
+             <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
+@@ -290,6 +290,7 @@ function Guarantee() {
+         )}
+       </Card>
+       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
++        {data?.source && <div className="mb-2 text-[11px] text-faint">Certificate source: <span className="num text-muted">{data.source}</span></div>}
+         <h4 className="mb-2 text-[13px] text-accent">Why this wins the room</h4>
+         “We don’t just <i>score</i> risk — we <b className="text-ink">control</b> it.” Turning a tuned threshold into a risk budget with a finite-sample certificate is something no guardrail/observability product ships. With more labelled calibration data (real benchmarks), the bound tightens. Honest by design: when there are too few labelled failures to certify a tight α, it says so.
+       </div>
+diff --git a/web/lib/api.ts b/web/lib/api.ts
+index e73eb42..95f7c38 100644
+--- a/web/lib/api.ts
++++ b/web/lib/api.ts
+@@ -39,7 +39,7 @@ export interface AgentReceipt {
+ }
+ export interface ControlRow { framework: string; control: string; evidence: string; status: string }
+ export interface PlaygroundResult {
+-  source: string; model: string; candidate: string; final: string; modified: boolean;
++  source: string; model: string; candidate: string; final: string; modified: boolean; cache_hit?: boolean; cache_hit_kind?: string; cache_similarity?: number | null;
+   controlplane: { action: Action; per_axis_p_fail: Partial<Record<Axis, number>>; stopping_reason: string; net_usd: number; added_latency_ms: number };
+   receipt: Receipt;
+ }
+@@ -88,7 +88,7 @@ export const api = {
+     fetch(`${API_BASE}/v1/oversight/playground`, {
+       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+     }).then((r) => r.json() as Promise<PlaygroundResult>),
+-  conformal: () => jget<{ axis: string; certificates: { alpha: number; valid: boolean; tau: number; empirical_fnr: number; risk_bound: number; n_failures: number; statement: string }[] }>("/v1/oversight/conformal"),
++  conformal: () => jget<{ axis: string; source?: string; risk_definition?: string; assumption?: string; certificates: { alpha: number; valid: boolean; tau: number; empirical_fnr: number; risk_bound: number; n_failures: number; holdout_fnr?: number | null; statement: string }[] }>("/v1/oversight/conformal"),
+   generatePolicy: (spec: UseCaseSpec, apply = false) =>
+     fetch(`${API_BASE}/v1/oversight/policy/generate?apply=${apply ? 1 : 0}`, {
+       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(spec),

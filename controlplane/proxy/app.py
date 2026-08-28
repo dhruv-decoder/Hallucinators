@@ -138,7 +138,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             ctx_str = "\n".join(req.retrieved_context) if req.retrieved_context else None
             routed_to = suggest_route_down(req.model, prompt) if req.model else None
             actual_model = routed_to or req.model
-            cache_key = service.cache_key(prompt, req.model, ctx_str)
+            cache_key = service.cache_key(prompt, req.model, ctx_str, req.use_case, service.policy_for(req.use_case)[1].id)
 
             def _gen():
                 for attempt in range(upstream_retries + 1):
@@ -152,7 +152,16 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
                 raise RuntimeError("upstream generation failed")
 
             gen, cache_hit = await asyncio.wait_for(
-                asyncio.to_thread(service.generate_cached, cache_key, _gen),
+                asyncio.to_thread(
+                    service.generate_cached,
+                    cache_key,
+                    _gen,
+                    prompt=prompt,
+                    model=req.model,
+                    context=ctx_str,
+                    use_case=req.use_case,
+                    policy_id=service.policy_for(req.use_case)[1].id,
+                ),
                 timeout=upstream_timeout_s * (upstream_retries + 2),
             )
             if routed_to and not cache_hit:
@@ -308,8 +317,17 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
         # Real cache bypass: a repeated (prompt, model, context) reuses the stored generation and never calls
         # the upstream again -- the counters below prove it. Keyed on the *requested* model.
-        key = service.cache_key(prompt, model, context)
-        gen, cache_hit = await asyncio.to_thread(service.generate_cached, key, _generate)
+        key = service.cache_key(prompt, model, context, use_case, service.policy_for(use_case)[1].id)
+        gen, cache_hit = await asyncio.to_thread(
+            service.generate_cached,
+            key,
+            _generate,
+            prompt=prompt,
+            model=model,
+            context=context,
+            use_case=use_case,
+            policy_id=service.policy_for(use_case)[1].id,
+        )
         if routed_to and not cache_hit:
             service.route_down_events += 1
         source = "cache" if cache_hit else ("groq" if getattr(gen, "token_source", "") == "measured" else "simulated")
@@ -392,9 +410,33 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             raise HTTPException(status_code=404, detail="job not found")
         return job.snapshot()
 
+    @app.get("/v1/oversight/cache")
+    def cache_status() -> dict:
+        """Expose bounded semantic-cache configuration and measured hit/miss counters."""
+        return {
+            **service.semantic_cache.stats(),
+            "upstream_calls": service.upstream_calls,
+            "cache_hits": service.cache_hits,
+            "exact_cache_hits": service.exact_cache_hits,
+            "semantic_cache_hits": service.semantic_cache_hits,
+            "cache_misses": service.cache_misses,
+        }
+
+    @app.get("/v1/oversight/informativeness")
+    def informativeness() -> dict:
+        """Return the empirical-eta artifact status and values currently used by the runtime."""
+        return service.informativeness_status()
+
     @app.get("/v1/oversight/conformal")
     def conformal() -> dict:
-        """Conformal risk-control certificates on the labelled eval set (guaranteed escaped-failure rate)."""
+        """Return offline conformal risk certificates; prefer a real public-data artifact over the demo seed."""
+        artifact = Path(os.environ.get("CONTROLPLANE_CONFORMAL_ARTIFACT", "artifacts/conformal_performance.json"))
+        if artifact.exists():
+            try:
+                return json.loads(artifact.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 - fall back to the deterministic demo certificate
+                pass
+
         from controlplane.cascade.conformal import risk_controlled_threshold
         from controlplane.core.types import Axis, PolicyProfile
         from controlplane.demo.run_demo import build_engine
@@ -415,7 +457,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
                 "empirical_fnr": round(c.empirical_fnr, 4), "risk_bound": round(c.risk_bound, 4),
                 "n_failures": c.n_failures, "statement": c.statement(),
             })
-        return {"axis": "performance", "certificates": certs}
+        return {"axis": "performance", "source": "synthetic_demo", "certificates": certs}
 
     @app.get("/v1/oversight/compliance")
     def compliance() -> dict:

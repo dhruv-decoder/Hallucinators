@@ -41,7 +41,7 @@ class RiskCertificate:
         if not self.valid:
             return f"cannot certify alpha={self.alpha:.2f}: only {self.n_failures} labelled failures"
         return (
-            f"escaped-failure rate guaranteed <= {self.alpha:.2f} "
+            f"expected conditional FNR <= {self.alpha:.2f} under exchangeability "
             f"(empirical {self.empirical_fnr:.3f}, conformal bound {self.risk_bound:.3f}, "
             f"n={self.n_failures} failures, flag at p_fail>={self.tau:.3f})"
         )

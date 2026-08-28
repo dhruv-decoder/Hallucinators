@@ -220,6 +220,28 @@ def test_cache_actually_bypasses_the_upstream_on_repeat(client: TestClient) -> N
     assert r2["economics"]["model_cost_avoided_usd"] > 0
 
 
+
+def test_semantic_cache_paraphrase_is_a_real_bypass(client: TestClient, monkeypatch) -> None:
+    import numpy as np
+
+    service = client.app.state.service
+    service.semantic_cache.enabled = True
+    service.semantic_cache.mode = "semantic"
+    service.semantic_cache._embedder = lambda _: np.array([1.0, 0.0])
+
+    first = client.post("/v1/oversight/playground", json={"prompt": "What are customer support hours?", "model": "gpt-4o"})
+    assert first.status_code == 200
+    calls_after_first = first.json()["economics"]["upstream_calls"]
+
+    second = client.post("/v1/oversight/playground", json={"prompt": "Can you tell me the customer support hours?", "model": "gpt-4o"})
+    assert second.status_code == 200
+    body = second.json()
+    assert body["cache_hit"] is True
+    assert body["economics"]["upstream_calls"] == calls_after_first
+    assert body["receipt"]["cost_opportunities"][1]["recommendation"] == "cache_hit"
+    assert body["receipt"]["cost_opportunities"][1]["detail"]["kind"] == "semantic"
+
+
 def test_conformal_endpoint_returns_certificates(client: TestClient) -> None:
     data = client.get("/v1/oversight/conformal").json()
     assert data["axis"] == "performance"

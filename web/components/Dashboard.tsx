@@ -271,7 +271,7 @@ function Guarantee() {
   return (
     <div className="flex flex-col gap-4">
       <Card title="Conformal risk control — a certificate on the escaped-failure rate"
-        desc="Competitors give a calibrated score; we control the risk. For a target α, the threshold is set so the fraction of true failures that slip through is provably ≤ α with finite-sample validity (Angelopoulos; Mohri–Hashimoto). Calibrated on the labelled eval set.">
+        desc="For a target α, conformal risk control chooses a threshold whose expected conditional false-negative rate on future failures is bounded by α under exchangeability. This is a finite-sample risk guarantee, not a claim of distribution-shift robustness.">
         {err ? <div className="text-faint">Guarantee unavailable.</div> : !data ? <div className="text-faint">Calibrating…</div> : (
           <table className="w-full border-collapse text-sm">
             <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
@@ -290,6 +290,7 @@ function Guarantee() {
         )}
       </Card>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
+        {data?.source && <div className="mb-2 text-[11px] text-faint">Certificate source: <span className="num text-muted">{data.source}</span></div>}
         <h4 className="mb-2 text-[13px] text-accent">Why this wins the room</h4>
         “We don’t just <i>score</i> risk — we <b className="text-ink">control</b> it.” Turning a tuned threshold into a risk budget with a finite-sample certificate is something no guardrail/observability product ships. With more labelled calibration data (real benchmarks), the bound tightens. Honest by design: when there are too few labelled failures to certify a tight α, it says so.
       </div>

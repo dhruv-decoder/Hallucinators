@@ -36,6 +36,9 @@ class Generation:
     use_case: str = "support_bot"
     injected_failure: str | None = None  # label for the demo/eval; None for clean answers
     token_source: str = "estimated"  # "measured" when input/output_tokens came from a provider's usage
+    cache_hit: bool = False
+    cache_similarity: float | None = None
+    cache_hit_kind: str = "miss"  # miss | exact | semantic
 
 
 @dataclass

@@ -1,10 +1,11 @@
 # Blessed entry points. Everything a stranger needs to run the project lives here.
 
-.PHONY: help install install-serve test demo whatif thermostat agent rag agent-live eval eval-real serve traffic web-install web-dev web-build lint clean
+.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live eval eval-real eval-eta conformal-real serve traffic web-install web-dev web-build lint clean
 
 help:
 	@echo "make install    - create .venv and install the core engine + dev tools"
 	@echo "make install-serve - also install the proxy/gateway deps (FastAPI, uvicorn)"
+	@echo "make install-semantic-cache - install optional sentence-transformer embeddings for semantic response caching"
 	@echo "make test       - run the unit tests"
 	@echo "make demo       - run the end-to-end oversight demo on sample requests"
 	@echo "make whatif     - run the What-If/Replay comparison across oversight policies"
@@ -14,6 +15,8 @@ help:
 	@echo "make agent-live - run a real ReAct tool-agent overseen live (add ARGS='--live' for real Groq)"
 	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
 	@echo "make eval-real  - eval on a real benchmark (HaluEval), now with 95% CIs; add ARGS='--models' for HHEM"
+	@echo "make eval-eta   - fit detector informativeness η from leakage-safe HaluEval forced-check data"
+	@echo "make conformal-real - build real-data escaped-failure conformal certificates"
 	@echo "make serve      - run The Tower: proxy + dashboard (:8000); serves the React UI if web/out exists, else lite"
 	@echo "make traffic    - fire the scripted demo workload at a running Tower (one-line base_url swap)"
 	@echo "make web-build  - build the Next.js UI to a static export so 'make serve' ships it as ONE service"
@@ -29,6 +32,10 @@ install:
 install-serve:
 	. .venv/bin/activate && pip install -e ".[dev,serve]"
 	@echo "Proxy deps installed. Run: make serve"
+
+install-semantic-cache:
+	. .venv/bin/activate && pip install -e ".[dev,serve,semantic-cache]"
+	@echo "Semantic-cache embeddings installed. Enable with CONTROLPLANE_SEMANTIC_CACHE=1"
 
 test:
 	pytest
@@ -56,6 +63,12 @@ eval:
 
 eval-real:
 	python -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
+
+eval-eta:
+	python -m controlplane.eval.run_eta $(ARGS)
+
+conformal-real:
+	python -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 $(ARGS)
 
 calibration:
 	python -m controlplane.eval.run_calibration $(ARGS)

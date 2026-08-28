@@ -30,7 +30,7 @@ const PROOF = [
   { k: "Oversight P&L", v: "net-negative", s: "savings outweigh safety spend" },
 ];
 const DIFF = [
-  { icon: CircleDollarSign, t: "Self-funding P&L", d: "Cost-axis savings pay for the safety checks — a live ledger that goes net-negative. Safer and cheaper, proven not asserted." },
+  { icon: CircleDollarSign, t: "Self-funding P&L", d: "Cost-axis savings (real cache-bypass + route-down) offset the safety checks — a live ledger. A demonstrated mechanism; measured on the real-model path, counterfactual portions labelled as such." },
   { icon: Workflow, t: "Agentic oversight", d: "Extends to multi-step agents: catches compounding hallucinations and loops, aborting mid-run before the wrong answer ships." },
   { icon: FileCheck2, t: "Compliance pack", d: "Every decision maps to EU AI Act / ISO 42001 / NIST AI RMF controls — auditor-ready evidence, generated on demand." },
   { icon: GitBranch, t: "Tamper-evident receipts", d: "A hash-chained flight recorder: every verdict is auditable, with the value-of-information math behind it." },

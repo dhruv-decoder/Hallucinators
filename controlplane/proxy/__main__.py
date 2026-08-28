@@ -22,8 +22,10 @@ def main() -> None:
     # Cloud hosts (Render/Heroku/etc.) inject $PORT; fall back to our own var, then 8000.
     port = int(os.environ.get("PORT") or os.environ.get("CONTROLPLANE_PORT") or "8000")
     force_sim = os.environ.get("CONTROLPLANE_FORCE_SIM", "").lower() in ("1", "true", "yes")
-    # CONTROLPLANE_RECORDER can be a .db path (durable SQLite) or a .jsonl path (reference store).
-    recorder = os.environ.get("CONTROLPLANE_RECORDER", "recorder_log.jsonl")
+    # Durable by default: the server persists the hash-chained audit log to SQLite so the chain survives
+    # restarts (an enterprise expectation). Override with CONTROLPLANE_RECORDER -- a .jsonl path for the
+    # in-memory reference store, or a different .db path.
+    recorder = os.environ.get("CONTROLPLANE_RECORDER", "controlplane.db")
     app = create_app(recorder_path=recorder, force_simulated=force_sim)
     print("\n  ControlPlane · The Tower")
     print(f"  Dashboard:  http://{host}:{port}/")

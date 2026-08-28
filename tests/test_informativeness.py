@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import json
 
-from controlplane.cascade.informativeness import EtaEstimate, apply_artifact, bootstrap_ci, estimate_eta, load_artifact, save_artifact
 from controlplane.cascade.detectors.base import Detector
+from controlplane.cascade.informativeness import (
+    EtaEstimate,
+    apply_artifact,
+    bootstrap_ci,
+    estimate_eta,
+    load_artifact,
+    save_artifact,
+)
 from controlplane.core.types import Axis, RequestContext, Tier
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -31,7 +31,9 @@ class EtaEstimate:
     bootstrap_high: float | None = None
 
 
-def _row_eta(p_before: float, p_after: float, failure: bool, cost_fail: float, cost_mitigate: float) -> tuple[float, float]:
+def _row_eta(
+    p_before: float, p_after: float, failure: bool, cost_fail: float, cost_mitigate: float
+) -> tuple[float, float]:
     before = min(max(p_before, 0.0), 1.0) * cost_fail
     before = min(before, cost_mitigate)
     after = min(max(p_after, 0.0), 1.0) * cost_fail
@@ -60,7 +62,10 @@ def estimate_eta(
         denominator += available
         used += 1
     if used < min_samples or denominator <= 1e-12:
-        return EtaEstimate("", prior, max(0.0, min(1.0, prior)), used, numerator, denominator, min_samples=min_samples, fallback=True)
+        return EtaEstimate(
+            "", prior, max(0.0, min(1.0, prior)), used, numerator, denominator,
+            min_samples=min_samples, fallback=True,
+        )
     eta = max(0.0, min(1.0, numerator / denominator))
     return EtaEstimate("", prior, eta, used, numerator, denominator, min_samples=min_samples)
 
@@ -89,10 +94,12 @@ def bootstrap_ci(
     return tuple(float(x) for x in np.quantile(vals, [alpha / 2, 1 - alpha / 2]))
 
 
-def save_artifact(path: str | Path, estimates: dict[str, EtaEstimate], *, dataset: str, fit_split: str, holdout_split: str) -> None:
+def save_artifact(
+    path: str | Path, estimates: dict[str, EtaEstimate], *, dataset: str, fit_split: str, holdout_split: str
+) -> None:
     payload = {
         "version": 1,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "method": "decision_value_gain_ratio",
         "dataset": dataset,
         "fit_split": fit_split,

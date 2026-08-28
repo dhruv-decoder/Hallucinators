@@ -15,9 +15,11 @@ def _gen(text: str = "answer") -> Generation:
 def test_compatible_semantic_hit_returns_cached_generation_without_generation_logic() -> None:
     cache = SemanticResponseCache(enabled=True, threshold=0.9, embedding_fn=lambda _: np.array([1.0, 0.0]))
     first = _gen("cached")
-    cache.store(prompt="What are support hours?", model="gpt-4o", context="9-6", use_case="support_bot", policy_id="support@balanced", generation=first)
+    cache.store(prompt="What are support hours?", model="gpt-4o", context="9-6",
+                use_case="support_bot", policy_id="support@balanced", generation=first)
 
-    hit = cache.lookup(prompt="Can you tell me the support hours?", model="gpt-4o", context="9-6", use_case="support_bot", policy_id="support@balanced")
+    hit = cache.lookup(prompt="Can you tell me the support hours?", model="gpt-4o", context="9-6",
+                       use_case="support_bot", policy_id="support@balanced")
     assert hit is not None
     assert hit.kind == "semantic"
     assert hit.generation.cache_hit is True
@@ -26,11 +28,16 @@ def test_compatible_semantic_hit_returns_cached_generation_without_generation_lo
 
 def test_model_context_use_case_or_policy_mismatch_is_a_miss() -> None:
     cache = SemanticResponseCache(enabled=True, threshold=0.9, embedding_fn=lambda _: np.array([1.0, 0.0]))
-    cache.store(prompt="refund policy", model="gpt-4o", context="A", use_case="support_bot", policy_id="support@balanced", generation=_gen())
-    assert cache.lookup(prompt="refund policy", model="gpt-4o-mini", context="A", use_case="support_bot", policy_id="support@balanced") is None
-    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="B", use_case="support_bot", policy_id="support@balanced") is None
-    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="A", use_case="internal_copilot", policy_id="support@balanced") is None
-    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="A", use_case="support_bot", policy_id="support@strict") is None
+    cache.store(prompt="refund policy", model="gpt-4o", context="A", use_case="support_bot",
+                policy_id="support@balanced", generation=_gen())
+    assert cache.lookup(prompt="refund policy", model="gpt-4o-mini", context="A",
+                        use_case="support_bot", policy_id="support@balanced") is None
+    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="B",
+                        use_case="support_bot", policy_id="support@balanced") is None
+    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="A",
+                        use_case="internal_copilot", policy_id="support@balanced") is None
+    assert cache.lookup(prompt="refund policy", model="gpt-4o", context="A",
+                        use_case="support_bot", policy_id="support@strict") is None
 
 
 def test_exact_mode_does_not_require_embedding_backend() -> None:

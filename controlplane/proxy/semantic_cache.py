@@ -13,8 +13,8 @@ import hashlib
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Callable
 
 import numpy as np
 
@@ -141,7 +141,10 @@ class SemanticResponseCache:
                     self._entries.pop(key, None)
                 else:
                     self._entries.move_to_end(key)
-                    return CacheLookup(replace(exact.generation, cache_hit=True, cache_similarity=1.0, cache_hit_kind="exact"), "exact", 1.0)
+                    return CacheLookup(
+                        replace(exact.generation, cache_hit=True, cache_similarity=1.0, cache_hit_kind="exact"),
+                        "exact", 1.0,
+                    )
 
             embedder = self._get_embedder()
             if embedder is None:

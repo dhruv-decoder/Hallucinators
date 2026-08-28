@@ -67,9 +67,11 @@ when the check's expected reduction in loss beats its own cost and latency. See
   overconfidence, and model-overkill, each with a documented upgrade path to a heavier model.
 - **Oversight P&L** (`controlplane/pnl/`) — cost saved vs. safety spend vs. net, per request.
 - **Flight recorder** (`controlplane/recorder/`) — every decision becomes a hash-chained, tamper-evident
-  receipt (reference JSONL store; SQLite upgrade in progress).
+  receipt. The server persists to durable SQLite by default (chain survives restarts); a JSONL reference
+  store is available via `CONTROLPLANE_RECORDER`.
 - **What-If / Replay simulator** (`controlplane/replay/`) — re-runs a workload under different oversight
-  policies (and oversight-off) to show the residual-risk vs. cost trade-off and prove the P&L is self-funding.
+  policies (and oversight-off) to show the residual-risk vs. cost trade-off and illustrate the self-funding
+  *mechanism* (savings are measured on the real-model path; the demo path books estimates/counterfactuals).
 - **Adaptive Oversight Thermostat** (`controlplane/cascade/thermostat.py`) — a feedback controller that
   raises verification thoroughness when recent risk spikes and relaxes it when traffic is calm.
 - **Optional model-backed PII** (`controlplane/cascade/detectors/responsibility_ml.py`) — a real Presidio +

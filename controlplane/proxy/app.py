@@ -27,6 +27,7 @@ import os
 import queue
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -36,6 +37,7 @@ from fastapi.staticfiles import StaticFiles
 
 from controlplane.cascade.detectors.responsibility import RegexPiiDetector
 from controlplane.core.types import RequestContext
+from controlplane.startup import ModelWarmup, env_bool
 from controlplane.proxy.openai_schemas import (
     ChatCompletionRequest,
     OversightBlock,
@@ -79,7 +81,26 @@ def _oversight_block(res: OverseeResult) -> OversightBlock:
 
 def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated: bool = False) -> FastAPI:
     """Build the FastAPI app. ``force_simulated`` pins the offline upstream even if a provider key is set."""
-    app = FastAPI(title="ControlPlane — The Tower", version="0.1.0")
+    service = OversightService(recorder_path=recorder_path)
+    upstream = build_upstream(force_simulated=force_simulated)
+    service.upstream = upstream  # lets bulk-simulate jobs generate candidates
+
+    warmup = ModelWarmup(enabled=env_bool("CONTROLPLANE_WARMUP", False))
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        task = warmup.start(service=service)
+        try:
+            yield
+        finally:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    app = FastAPI(title="ControlPlane — The Tower", version="0.1.0", lifespan=lifespan)
     # Allow a separately-hosted frontend (e.g. the Next.js app on Vercel) to call the API. Lock this down
     # with CONTROLPLANE_CORS_ORIGINS in production; defaults open for the demo.
     app.add_middleware(
@@ -88,9 +109,6 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    service = OversightService(recorder_path=recorder_path)
-    upstream = build_upstream(force_simulated=force_simulated)
-    service.upstream = upstream  # lets bulk-simulate jobs generate candidates
     # Concurrency admission control now lives on the service (service.max_concurrency / queue_timeout_ms).
     queue_timeout_ms = _env_int("CONTROLPLANE_QUEUE_TIMEOUT_MS", 250, 10, 60_000)
     upstream_timeout_s = _env_float("CONTROLPLANE_UPSTREAM_TIMEOUT_S", 30.0, 0.1, 300.0)
@@ -103,6 +121,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         "upstream_timeout_s": upstream_timeout_s,
         "upstream_retries": upstream_retries,
     }
+    app.state.warmup = warmup
 
     # ---- OpenAI-compatible surface -----------------------------------------------------------------
     @app.get("/v1/models")
@@ -232,13 +251,16 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         raise HTTPException(status_code=404, detail="receipt not found")
 
     @app.get("/readyz")
-    def readyz() -> dict:
-        return {
-            "ready": True,
+    def readyz() -> JSONResponse:
+        status = warmup.snapshot()
+        payload = {
+            "ready": bool(status["ready"] and service.policies and service.recorder is not None),
             "upstream": upstream.name,
             "policy_loaded": bool(service.policies),
             "recorder": service.recorder is not None,
+            "warmup": status,
         }
+        return JSONResponse(payload, status_code=200 if payload["ready"] else 503)
 
     @app.post("/v1/oversight/jobs/runtime-probe")
     def runtime_probe(n: int = 120, concurrency: int = 16) -> dict:

@@ -1,0 +1,184 @@
+{
+  "methodology": {
+    "axes": [
+      "performance",
+      "responsibility"
+    ],
+    "cold_start_excluded_from_latency": true,
+    "confusion_passes": 1,
+    "fixed_checks_note": "fixed_checks uses always_run=True over the same detector stack; no_oversight and flag_everything are prediction baselines.",
+    "latency_repeats": 1,
+    "models": true,
+    "n_requested": 500,
+    "note": "End-to-end model/network latency is not included; the latency columns measure local cascade execution only.",
+    "same_examples": true,
+    "tau": 0.5,
+    "warmup_samples_excluded": 20
+  },
+  "strategies": {
+    "controlplane": {
+      "confusion": {
+        "performance": {
+          "f1": 0.8037,
+          "f1_ci_high": 0.8428,
+          "f1_ci_low": 0.7646,
+          "fn": 74,
+          "fnr": 0.296,
+          "fp": 12,
+          "fpr": 0.048,
+          "precision": 0.9362,
+          "recall": 0.704,
+          "tn": 238,
+          "tp": 176
+        },
+        "responsibility": {
+          "f1": 0.0,
+          "f1_ci_high": 0.0,
+          "f1_ci_low": 0.0,
+          "fn": 0,
+          "fnr": 0.0,
+          "fp": 0,
+          "fpr": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tn": 500,
+          "tp": 0
+        }
+      },
+      "errors": 0,
+      "expensive_checks_run": 227,
+      "expensive_checks_skipped": 773,
+      "latency_ms": {
+        "mean": 96.095,
+        "p50": 0.976,
+        "p95": 277.35,
+        "p99": 342.257,
+        "samples": 500
+      },
+      "n": 500,
+      "name": "controlplane",
+      "t0_clearance_pct": 54.6
+    },
+    "fixed_checks": {
+      "confusion": {
+        "performance": {
+          "f1": 0.7586,
+          "f1_ci_high": 0.8009,
+          "f1_ci_low": 0.7159,
+          "fn": 74,
+          "fnr": 0.296,
+          "fp": 38,
+          "fpr": 0.152,
+          "precision": 0.8224,
+          "recall": 0.704,
+          "tn": 212,
+          "tp": 176
+        },
+        "responsibility": {
+          "f1": 0.0,
+          "f1_ci_high": 0.0,
+          "f1_ci_low": 0.0,
+          "fn": 0,
+          "fnr": 0.0,
+          "fp": 0,
+          "fpr": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tn": 500,
+          "tp": 0
+        }
+      },
+      "errors": 0,
+      "expensive_checks_run": 500,
+      "expensive_checks_skipped": 500,
+      "latency_ms": {
+        "mean": 191.336,
+        "p50": 183.656,
+        "p95": 272.217,
+        "p99": 313.8,
+        "samples": 500
+      },
+      "n": 500,
+      "name": "fixed_checks",
+      "t0_clearance_pct": 0.0
+    },
+    "flag_everything": {
+      "confusion": {
+        "performance": {
+          "f1": 0.6667,
+          "fn": 0,
+          "fnr": 0.0,
+          "fp": 250,
+          "fpr": 1.0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "tn": 0,
+          "tp": 250
+        },
+        "responsibility": {
+          "f1": 0.0,
+          "fn": 0,
+          "fnr": 0.0,
+          "fp": 500,
+          "fpr": 1.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tn": 0,
+          "tp": 0
+        }
+      },
+      "errors": 0,
+      "expensive_checks_run": 0,
+      "expensive_checks_skipped": 0,
+      "latency_ms": {
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "samples": 0
+      },
+      "n": 500,
+      "name": "flag_everything",
+      "t0_clearance_pct": 0.0
+    },
+    "no_oversight": {
+      "confusion": {
+        "performance": {
+          "f1": 0.0,
+          "fn": 250,
+          "fnr": 1.0,
+          "fp": 0,
+          "fpr": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tn": 250,
+          "tp": 0
+        },
+        "responsibility": {
+          "f1": 0.0,
+          "fn": 0,
+          "fnr": 0.0,
+          "fp": 0,
+          "fpr": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "tn": 500,
+          "tp": 0
+        }
+      },
+      "errors": 0,
+      "expensive_checks_run": 0,
+      "expensive_checks_skipped": 0,
+      "latency_ms": {
+        "mean": 0.0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "samples": 0
+      },
+      "n": 500,
+      "name": "no_oversight",
+      "t0_clearance_pct": 0.0
+    }
+  }
+}

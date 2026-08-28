@@ -196,3 +196,22 @@ docs/                 # WALKTHROUGH (start here), PLAN, ARCHITECTURE, JUDGE, DEC
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+
+## Final validation: warm-up and aggregate benchmark
+
+The gateway keeps cold-start/model initialization separate from steady-state request measurements.
+
+- Local development: leave `CONTROLPLANE_WARMUP=0` (the default) for immediate startup.
+- Hosted deployment: set `CONTROLPLANE_WARMUP=1` and point Render's HTTP health check at `/readyz`; the instance reports `503` while enabled warm-up is incomplete and `200` once ready.
+- The readiness response includes component-level warm-up status and elapsed time.
+
+For the reproducible public-data benchmark:
+
+```bash
+make eval-aggregate ARGS="--dataset halueval --limit 500 --warmup 20 --repeats 3"
+```
+
+Add `--models` to include HHEM as the model-backed T1 detector. The benchmark excludes warm-up examples from reported latency, evaluates the same labelled examples under `no_oversight`, `flag_everything`, `fixed_checks`, and adaptive `controlplane`, and reports p50/p95/p99 latency, F1/recall/FPR/FNR, confidence intervals, T0 clearance, and expensive-check counts. The latency numbers are local cascade execution measurements; they are not end-to-end provider/network latency.
+
+These conventions follow the usual percentile-based performance-test practice and Render's application-level readiness model. The public HHEM model is loaded through its documented `AutoModelForSequenceClassification(..., trust_remote_code=True)` interface.

@@ -47,6 +47,20 @@ export interface UseCaseSpec {
   use_case: string; weekly_volume: number; latency_budget: string; risk_tolerance: string;
   data_sensitivity: string; geo: string;
 }
+export interface WarmupStatus {
+  enabled: boolean; ready: boolean; status: "disabled" | "pending" | "warming" | "ready" | "error";
+  elapsed_seconds: number | null; error: string | null;
+  components: Record<string, { status: string; elapsed_seconds?: number; error?: string }>;
+}
+export interface CacheStatus {
+  mode: string; enabled: boolean; threshold: number; entries: number; max_entries: number;
+  ttl_seconds: number; embedding_model: string | null; upstream_calls: number; cache_hits: number;
+  exact_cache_hits: number; semantic_cache_hits: number; cache_misses: number;
+}
+export interface InformativenessStatus {
+  artifact: string; loaded: boolean;
+  detectors: Record<string, { runtime_eta: number; source: string }>;
+}
 export interface RuntimeObservability {
   uptime_seconds: number; requests: number; active_requests: number; throughput_rps: number; errors: number; overload_rejections: number; stream_aborts: number; max_concurrency: number;
   latency_ms: { p50: number; p95: number; p99: number; sample_count: number };
@@ -98,7 +112,9 @@ export const api = {
   job: (id: string) => jget<JobSnapshot>(`/v1/oversight/jobs/${id}`),
   streamUrl: () => `${API_BASE}/v1/oversight/stream`,
   observability: () => jget<RuntimeObservability>('/v1/oversight/observability'),
-  ready: () => jget<{ ready: boolean; upstream: string; policy_loaded: boolean; recorder: boolean }>('/readyz'),
+  ready: () => jget<{ ready: boolean; upstream: string; policy_loaded: boolean; recorder: boolean; warmup: WarmupStatus }>('/readyz'),
   runtimeProbe: (n = 120, concurrency = 16) => jpost<JobSnapshot>(`/v1/oversight/jobs/runtime-probe?n=${n}&concurrency=${concurrency}`),
   verifyReceipt: (id: string) => jget<{ request_id: string; receipt_valid: boolean; chain_valid: boolean; hash_self: string; hash_prev: string }>(`/v1/oversight/receipts/${encodeURIComponent(id)}/verify`),
+  cache: () => jget<CacheStatus>('/v1/oversight/cache'),
+  informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),
 };

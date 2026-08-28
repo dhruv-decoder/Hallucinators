@@ -1,6 +1,6 @@
 # Blessed entry points. Everything a stranger needs to run the project lives here.
 
-.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live eval eval-real eval-eta conformal-real serve traffic web-install web-dev web-build lint clean
+.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live eval eval-real eval-aggregate eval-eta conformal-real serve traffic web-install web-dev web-build lint clean
 
 help:
 	@echo "make install    - create .venv and install the core engine + dev tools"
@@ -15,6 +15,7 @@ help:
 	@echo "make agent-live - run a real ReAct tool-agent overseen live (add ARGS='--live' for real Groq)"
 	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
 	@echo "make eval-real  - eval on a real benchmark (HaluEval), now with 95% CIs; add ARGS='--models' for HHEM"
+	@echo "make eval-aggregate - leakage-aware aggregate public-data benchmark; add ARGS='--dataset halueval --limit 500 --warmup 20 --repeats 3'"
 	@echo "make eval-eta   - fit detector informativeness η from leakage-safe HaluEval forced-check data"
 	@echo "make conformal-real - build real-data escaped-failure conformal certificates"
 	@echo "make serve      - run The Tower: proxy + dashboard (:8000); serves the React UI if web/out exists, else lite"
@@ -63,6 +64,9 @@ eval:
 
 eval-real:
 	python -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
+
+eval-aggregate:
+	python -m controlplane.eval.aggregate --dataset halueval --limit 500 --warmup 20 --repeats 3 $(ARGS)
 
 eval-eta:
 	python -m controlplane.eval.run_eta $(ARGS)

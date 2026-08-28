@@ -563,16 +563,17 @@ function useJob() {
 
 function RuntimeHealth() {
   const [obs, setObs] = useState<RuntimeObservability | null>(null);
+  const [cache, setCache] = useState<Awaited<ReturnType<typeof api.cache>> | null>(null);
   const [probeRes, setProbeRes] = useState<any>(null);
   const [probing, setProbing] = useState(false);
-  const [ready, setReady] = useState<boolean | null>(null);
+  const [ready, setReady] = useState<Awaited<ReturnType<typeof api.ready>> | null>(null);
   useEffect(() => {
     let live = true;
     const load = async () => {
       try {
-        const [o, r] = await Promise.all([api.observability(), api.ready()]);
-        if (live) { setObs(o); setReady(r.ready); }
-      } catch { if (live) setReady(false); }
+        const [o, r, c] = await Promise.all([api.observability(), api.ready(), api.cache()]);
+        if (live) { setObs(o); setReady(r); setCache(c); }
+      } catch { if (live) setReady(null); }
     };
     load();
     const id = setInterval(load, 2000);
@@ -593,6 +594,7 @@ function RuntimeHealth() {
     setProbing(false);
   };
   const p = obs?.latency_ms;
+  const warm = ready?.warmup;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-4 gap-3 max-xl:grid-cols-2">
@@ -601,11 +603,45 @@ function RuntimeHealth() {
         <Kpi label="overload shed" value={`${obs?.overload_rejections ?? 0}`} foot={`max concurrency ${obs?.max_concurrency ?? 0}`} />
         <Kpi label="stream aborts" value={`${obs?.stream_aborts ?? 0}`} foot={`${obs?.errors ?? 0} errors`} />
       </div>
-      <Card title="Service readiness" desc="A real liveness/readiness check, plus bounded concurrency so the oversight layer protects itself under load.">
+
+      <Card title="Readiness & model warm-up" desc="The process is live immediately, but traffic is only considered ready after enabled model-backed components finish warming. This separates cold-start time from measured inference latency.">
         <div className="flex flex-wrap items-center gap-3">
-          <span className={`badge ${ready ? "badge-pass" : "badge-block"}`}>{ready ? "ready" : "not ready"}</span>
-          <span className="text-sm text-muted">max concurrency {obs?.config.max_concurrency ?? "—"} · queue timeout {obs?.config.queue_timeout_ms ?? "—"} ms · upstream timeout {obs?.config.upstream_timeout_s ?? "—"} s</span>
-          <button className="btn-primary ml-auto" onClick={runProbe} disabled={probing}>{probing ? "running…" : "Run concurrency probe"}</button>
+          <span className={`badge ${ready?.ready ? "badge-pass" : "badge-escalate"}`}>{ready?.ready ? "ready" : "warming / unavailable"}</span>
+          <span className="text-sm text-muted">
+            warm-up {warm?.status ?? "unknown"}{warm?.elapsed_seconds != null ? ` · ${warm.elapsed_seconds}s` : ""}
+            {" · "}upstream {ready?.upstream ?? "—"}
+          </span>
+        </div>
+        {warm?.error && <div className="mt-3 rounded-lg border border-block/40 bg-block/5 p-3 text-sm text-block">{warm.error}</div>}
+        {warm?.components && (
+          <div className="mt-3 grid grid-cols-2 gap-2 max-md:grid-cols-1">
+            {Object.entries(warm.components).map(([name, c]) => (
+              <div key={name} className="flex items-center justify-between rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm">
+                <span className="text-muted">{name}</span>
+                <span className={`badge ${c.status === "ready" || c.status === "skipped" ? "badge-pass" : c.status === "error" ? "badge-block" : "badge-escalate"}`}>
+                  {c.status}{c.elapsed_seconds != null ? ` · ${c.elapsed_seconds}s` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Semantic response cache" desc="Cache hits avoid upstream generation while still passing through the normal policy/oversight path.">
+        <div className="grid grid-cols-5 gap-3 max-xl:grid-cols-2">
+          <Kpi label="entries" value={cache?.entries ?? "—"} />
+          <Kpi label="hit rate" value={cache && (cache.cache_hits + cache.cache_misses) ? `${((cache.cache_hits / (cache.cache_hits + cache.cache_misses)) * 100).toFixed(1)}%` : "—"} />
+          <Kpi label="exact hits" value={cache?.exact_cache_hits ?? "—"} />
+          <Kpi label="semantic hits" value={cache?.semantic_cache_hits ?? "—"} />
+          <Kpi label="upstream calls" value={cache?.upstream_calls ?? "—"} />
+        </div>
+      </Card>
+
+      <Card title="Service readiness" desc="Bounded concurrency protects the oversight layer itself under load.">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`badge ${ready?.ready ? "badge-pass" : "badge-escalate"}`}>{ready?.ready ? "ready" : "not ready"}</span>
+          <span className="text-sm text-muted">max concurrency {obs?.config.max_concurrency ?? "—"} · queue timeout {obs?.config.queue_timeout_ms ?? "—"} ms · upstream timeout {obs?.config.upstream_timeout_s ?? "—"} s · retries {obs?.config.upstream_retries ?? "—"}</span>
+          <button className="btn-primary ml-auto" onClick={runProbe} disabled={probing || !ready?.ready}>{probing ? "running…" : "Run concurrency probe"}</button>
         </div>
       </Card>
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
@@ -640,6 +676,10 @@ function Benchmark() {
         <button className="btn-primary" onClick={() => run(() => api.startBenchmark(n, w), (r) => { setRes(r); toast("Benchmark complete", `p95 ${r.added_latency_ms.p95}ms · ${r.throughput_rps} rps`, "ok"); })}>Run benchmark</button>
       </div>
       {prog.on && <ProgressBar progress={prog.p} label={prog.label} />}
+      <div className="mt-4 rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
+        <h4 className="mb-1.5 text-[13px] text-accent">Aggregate public benchmark</h4>
+        <p>For the final evidence run, execute <span className="font-mono text-ink">make eval-aggregate ARGS="--dataset halueval --limit 500 --warmup 20 --repeats 3"</span>. This excludes cold-start samples, compares the same labelled examples, and reports F1/recall/FPR plus p50/p95/p99 and expensive-check counts.</p>
+      </div>
       {res && (
         <div className="mt-4">
           <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
@@ -749,6 +789,9 @@ function Compliance() {
 
 function Detectors({ summary }: { summary: Summary | null }) {
   const m = summary?.models;
+  const [info, setInfo] = useState<Awaited<ReturnType<typeof api.informativeness>> | null>(null);
+  useEffect(() => { api.informativeness().then(setInfo).catch(() => {}); }, []);
+
   const rows = [
     ["T0", "performance", "overconfidence, lexical groundedness, self-consistency", "SEP / semantic entropy"],
     ["T1", "performance", "HHEM-2.1 groundedness (model)", "MiniCheck / Lynx"],
@@ -770,6 +813,17 @@ function Detectors({ summary }: { summary: Summary | null }) {
           <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="border-b border-line p-2.5">{j === 2 && c.includes("(model)") ? <>{c.replace(" (model)", "")} <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] text-muted">model</span></> : c}</td>)}</tr>)}</tbody>
         </table>
         <p className="mt-3 text-[12.5px] text-muted">On real HaluEval data the cheap lexical check scores F1 0.30; the VoI cascade climbing to HHEM on the uncertain tail reaches F1 0.76 (docs/EVIDENCE.md). Enable models with the <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px]">[ml]</span> extra or a judge backend (Groq/Ollama).</p>
+      </Card>
+      <Card title="Learned detector informativeness" desc="The runtime η values determine how much a detector can be expected to reduce uncertainty. The source indicates whether a learned offline artifact is loaded.">
+        <div className="mb-3 text-xs text-muted">{info?.loaded ? `Loaded from ${info.artifact}` : "Using manual detector priors (no offline artifact loaded)."}</div>
+        <div className="grid grid-cols-2 gap-2 max-md:grid-cols-1">
+          {Object.entries(info?.detectors ?? {}).map(([name, v]) => (
+            <div key={name} className="flex items-center justify-between rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm">
+              <span className="text-muted">{name}</span>
+              <span className="num">η {v.runtime_eta.toFixed(3)} · {v.source}</span>
+            </div>
+          ))}
+        </div>
       </Card>
     </div>
   );
@@ -818,7 +872,15 @@ function Help() {
 }
 
 /* ---- receipt drawer ---- */
-function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () => void }) {
+function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onOpenVerify?: (id: string) => void }) {
+  const [verification, setVerification] = useState<Awaited<ReturnType<typeof api.verifyReceipt>> | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const verify = async () => {
+    setVerifying(true);
+    try { setVerification(await api.verifyReceipt(r.request_id)); toast("Receipt verified", "Hash and chain validation completed", "ok"); }
+    catch (e) { toast("Verification failed", String(e), "err"); }
+    setVerifying(false);
+  };
   const trace = r.trace.filter((s) => s.tier > 0).map((s) =>
     `${s.ran ? "RAN " : "SKIP"} T${s.tier} ${s.detector.padEnd(20)} voi=${(s.voi || 0).toFixed(5)} vs cost=${(s.check_cost || 0).toFixed(5)}  (${s.reason})`).join("\n")
     || "all resolved at T0 — no higher-tier check was worth its cost";
@@ -842,6 +904,17 @@ function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () 
         <h4 className="mb-1.5 mt-4 text-[13px]">Value-of-information trace</h4>
         <pre className="code whitespace-pre-wrap">{trace}</pre>
         {r.repaired_output && <><h4 className="mb-1.5 mt-4 text-[13px]">Delivered to user</h4><pre className="code whitespace-pre-wrap">{r.repaired_output}</pre></>}
+        <div className="mt-4 flex items-center gap-2">
+          <button className="btn-primary" onClick={verify} disabled={verifying}>{verifying ? "verifying…" : "Verify receipt & chain"}</button>
+          {verification && <span className={`badge ${verification.receipt_valid && verification.chain_valid ? "badge-pass" : "badge-block"}`}>
+            {verification.receipt_valid && verification.chain_valid ? "verified" : "verification failed"}
+          </span>}
+        </div>
+        {verification && (
+          <div className="mt-2 rounded-lg border border-line bg-panel-2 p-3 text-xs text-muted">
+            receipt hash: {verification.receipt_valid ? "valid" : "invalid"} · chain: {verification.chain_valid ? "valid" : "invalid"}
+          </div>
+        )}
         <h4 className="mb-1.5 mt-4 text-[13px]">Tamper-evident chain</h4>
         <div className="break-all font-mono text-[10.5px] text-faint">self {r.hash_self}<br />prev {r.hash_prev || "genesis"}</div>
       </aside>

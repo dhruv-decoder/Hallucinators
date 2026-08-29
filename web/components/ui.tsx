@@ -26,6 +26,17 @@ export function Kpi({ label, value, tone, foot, info }: { label: string; value: 
   );
 }
 
+export function EmptyState({ icon: Icon, title, hint, action }: { icon?: any; title: string; hint?: string; action?: React.ReactNode }) {
+  return (
+    <div className="empty">
+      {Icon && <Icon className="mb-3 text-faint" size={26} />}
+      <div className="text-sm font-semibold text-ink">{title}</div>
+      {hint && <div className="mx-auto mt-1 max-w-[440px] text-[13px] text-muted">{hint}</div>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
 export function Badge({ action }: { action: string }) {
   // .badge-<action> classes live in globals.css and adapt to light/dark via color-mix.
   return <span className={cn("badge", `badge-${action}`)}>{action.replace("_", "-")}</span>;

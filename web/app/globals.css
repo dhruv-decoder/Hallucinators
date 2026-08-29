@@ -43,7 +43,11 @@ a { color: inherit; text-decoration: none; }
   .btn:disabled { opacity: .5; }
   .btn-primary { @apply rounded-lg px-3.5 py-2 text-sm font-semibold transition; background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
   .btn-primary:hover { filter: brightness(1.08); box-shadow: var(--glow); }
-  .kpi { @apply rounded-xl border border-line bg-panel p-3.5; }
+  .kpi { @apply rounded-xl border border-line bg-panel p-4; }
+  /* One responsive rhythm for every KPI row: auto-fit so cards never get cramped or awkwardly stranded,
+     regardless of how many there are, and wrap cleanly on smaller screens. */
+  .kpi-grid { @apply grid gap-3; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .empty { @apply flex flex-col items-center justify-center rounded-xl border border-dashed border-line py-14 text-center; }
   .navitem { @apply flex cursor-pointer select-none items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-muted transition; }
   .navitem:hover { @apply text-ink; background: var(--panel); }
   .navitem-active { color: var(--ink); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }

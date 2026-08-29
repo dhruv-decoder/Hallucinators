@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, StreamGuardCase, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
-import { Badge, Card, Kpi, ProgressBar, toast, Toaster } from "./ui";
+import { Badge, Card, EmptyState, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
@@ -389,7 +389,7 @@ function Configurator({ onApplied }: { onApplied: () => void }) {
 
       {res && proj ? (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
+          <div className="kpi-grid">
             <Kpi label="Cleared @ T0" value={`${proj.cleared_at_t0_pct}%`} foot="free tier" />
             <Kpi label="Added latency p95" value={`${proj.added_latency_p95_ms} ms`} foot="projected" />
             <Kpi label="Escalations" value={`${(proj.escalation_rate * 100).toFixed(0)}%`} foot={`${proj.human_reviews_per_month.toLocaleString()}/mo to humans`} />
@@ -478,7 +478,7 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
   const intercepted = (ba.escalate ?? 0) + (ba.block ?? 0) + (ba.auto_repair ?? 0);
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-7 gap-3 max-2xl:grid-cols-4 max-xl:grid-cols-3 max-sm:grid-cols-2">
+      <div className="kpi-grid">
         <Kpi label="Decisions" value={s?.requests ?? 0} foot="overseen inline" />
         <Kpi label="Net P&L" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : "safety > savings"} info="Safety spend minus cost saved. Negative = oversight pays for itself." />
         <Kpi label="Incidents intercepted" value={intercepted} tone={intercepted > 0 ? "good" : undefined} foot="repaired / escalated / blocked" info="Responses that triggered a protective action (auto-repair, escalation, or block). Measures intercepted responses, not real-world incidents." />
@@ -569,7 +569,7 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
   const hasBreakdown = (sav && (sav.route_down || sav.cache || sav.early_abort)) || spendRows.length > 0;
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="kpi-grid">
         <Kpi label="Cost saved" value={usd(s?.cost_saved_usd ?? 0)} tone="good" foot="route-down + cache + abort" />
         <Kpi label="Safety spend" value={usd(s?.safety_spend_usd ?? 0)} foot="checks that ran" />
         <Kpi label="Automated net" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"}
@@ -605,7 +605,7 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
       )}
       {proj && (
         <Card title="Projected at enterprise scale" desc={`The same per-request economics at ${proj.weekly_volume.toLocaleString()} requests/week (the brief's reference volume). Sourced list prices, an estimate not a bill.`}>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="kpi-grid">
             <Kpi label="Weekly net" value={usd(proj.weekly_net_usd)} tone={proj.weekly_net_usd < 0 ? "good" : "bad"} />
             <Kpi label="Annual net" value={usd(proj.annual_net_usd)} tone={proj.annual_net_usd < 0 ? "good" : "bad"} />
             <Kpi label="Human review" value={usd(s?.human_review_usd ?? 0)} foot="analyst time on escalations" />
@@ -674,7 +674,7 @@ function RuntimeHealth() {
   const warm = ready?.warmup;
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-4 gap-3 max-xl:grid-cols-2">
+      <div className="kpi-grid">
         <Kpi label="p95 oversight" value={`${p?.p95 ?? "-"} ms`} tone="good" foot={`${p?.sample_count ?? 0} samples`} />
         <Kpi label="throughput" value={`${(obs?.throughput_rps ?? 0).toFixed(2)} rps`} foot={`${obs?.active_requests ?? 0} active`} />
         <Kpi label="overload shed" value={`${obs?.overload_rejections ?? 0}`} foot={`max concurrency ${obs?.max_concurrency ?? 0}`} />
@@ -705,7 +705,7 @@ function RuntimeHealth() {
       </Card>
 
       <Card title="Semantic response cache" desc="Cache hits avoid upstream generation while still passing through the normal policy/oversight path.">
-        <div className="grid grid-cols-5 gap-3 max-xl:grid-cols-2">
+        <div className="kpi-grid">
           <Kpi label="entries" value={cache?.entries ?? "-"} />
           <Kpi label="hit rate" value={cache && (cache.cache_hits + cache.cache_misses) ? `${((cache.cache_hits / (cache.cache_hits + cache.cache_misses)) * 100).toFixed(1)}%` : "-"} />
           <Kpi label="exact hits" value={cache?.exact_cache_hits ?? "-"} />
@@ -723,7 +723,7 @@ function RuntimeHealth() {
       </Card>
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
         <Card title="Tier activity" desc="Counts are based on detector signals recorded during live traffic.">
-          <div className="grid grid-cols-3 gap-3">{["T0", "T1", "T2"].map((t) => <Kpi key={t} label={t} value={`${obs?.tier_counts?.[t] ?? 0}`} />)}</div>
+          <div className="kpi-grid">{["T0", "T1", "T2"].map((t) => <Kpi key={t} label={t} value={`${obs?.tier_counts?.[t] ?? 0}`} />)}</div>
         </Card>
         <Card title="Detector latency" desc="Average detector runtime from the live receipt stream.">
           <div className="flex flex-col gap-2">{Object.entries(obs?.detector_avg_latency_ms ?? {}).slice(0, 8).map(([name, ms]) => (
@@ -732,7 +732,7 @@ function RuntimeHealth() {
         </Card>
       </div>
       {probeRes && <Card title="Concurrency probe" desc="Same real pipeline, driven at bounded concurrency. This is measured runtime behavior, not a capacity claim from the UI.">
-        <div className="grid grid-cols-5 gap-3 max-lg:grid-cols-2">
+        <div className="kpi-grid">
           <Kpi label="requests" value={probeRes.requests} /><Kpi label="concurrency" value={probeRes.concurrency} /><Kpi label="throughput" value={`${probeRes.throughput_rps} rps`} /><Kpi label="p50" value={`${probeRes.latency_ms.p50} ms`} /><Kpi label="p95" value={`${probeRes.latency_ms.p95} ms`} />
         </div>
       </Card>}
@@ -1111,7 +1111,7 @@ function Benchmark() {
       </div>
       {res && (
         <div className="mt-4">
-          <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
+          <div className="kpi-grid">
             <Kpi label="p50 added" value={`${res.added_latency_ms.p50} ms`} tone="good" />
             <Kpi label="p95 added" value={`${res.added_latency_ms.p95} ms`} tone="good" />
             <Kpi label="p99 added" value={`${res.added_latency_ms.p99} ms`} />
@@ -1143,6 +1143,7 @@ function Replay() {
   return (
     <Card desc="The same workload under three risk appetites. Automated oversight is self-funding in every one (auto net below zero). On top of that you choose how much human review to buy: a stricter appetite escalates more, so it cuts residual risk further but costs more analyst time. That is the over- vs under-flagging tradeoff, priced in dollars.">
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run replay"}</button>
+      {!rows && !loading && <div className="mt-4"><EmptyState icon={History} title="Re-run the same workload under three risk appetites" hint="Strict, balanced, and lenient side by side: residual risk, auto net, human-review cost, and escalation rate, so you can price the over- vs under-flagging tradeoff." /></div>}
       {rows && (
         <table className="mt-4 w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
@@ -1175,6 +1176,7 @@ function Agents() {
   return (
     <Card desc="A support agent hallucinates a “365-day premium refund” no source supports, then loops to confirm its own invention. The auditor watches risk compound step-by-step and aborts before the wrong answer reaches the user, saving the wasted steps.">
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run agent trajectory"}</button>
+      {!r && !loading && <div className="mt-4"><EmptyState icon={Workflow} title="Watch a looping agent get stopped mid-run" hint="A support agent hallucinates a 365-day premium refund no source supports, then loops to confirm its own invention. The auditor watches risk compound step by step and aborts before the wrong answer ships." /></div>}
       {r && (
         <div className="mt-4">
           <div className="mb-2 text-xs text-faint">TASK · {r.task}</div>
@@ -1208,6 +1210,7 @@ function Compliance() {
         <button className="btn-primary" onClick={go}>Generate evidence pack</button>
         <a className="btn" href={`${api.streamUrl().replace("/v1/oversight/stream", "/v1/oversight/compliance.md")}`} target="_blank" rel="noreferrer">⬇ download Markdown</a>
       </div>
+      {!p && <div className="mt-4"><EmptyState icon={ScrollText} title="Turn the audit log into an evidence pack" hint="Every recorded decision is mapped to EU AI Act / ISO 42001 / NIST AI RMF controls, with the receipt as evidence. Generate it here or download the Markdown for auditors." /></div>}
       {p && (
         <table className="mt-4 w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
@@ -1237,7 +1240,7 @@ function Detectors({ summary }: { summary: Summary | null }) {
   ];
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
+      <div className="kpi-grid">
         <Kpi label="Groundedness" value={m?.groundedness ?? "-"} tone={m?.groundedness?.includes("hhem") ? "good" : undefined} foot="performance axis" />
         <Kpi label="PII" value={m?.pii ?? "-"} tone={m?.pii?.includes("presidio") ? "good" : undefined} foot="responsibility axis" />
         <Kpi label="Safety" value={m?.safety ?? "heuristic"} tone={m?.safety && m.safety !== "heuristic" ? "good" : undefined} foot="responsibility axis" />

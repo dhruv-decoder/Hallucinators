@@ -64,6 +64,31 @@ export interface InformativenessStatus {
   artifact: string; loaded: boolean;
   detectors: Record<string, { runtime_eta: number; source: string }>;
 }
+export interface BenchmarkConfusion {
+  precision: number; recall: number; f1: number; f1_ci_low?: number; f1_ci_high?: number;
+  fpr: number; fnr: number; tp: number; fp: number; tn: number; fn: number;
+}
+export interface BenchmarkStrategy {
+  name: string; n: number; errors: number;
+  expensive_checks_run: number; expensive_checks_skipped: number; t0_clearance_pct: number;
+  latency_ms: { mean: number; p50: number; p95: number; p99: number; samples: number };
+  confusion: { performance: BenchmarkConfusion; responsibility: BenchmarkConfusion };
+}
+export interface BenchmarkEval {
+  artifact?: string;
+  methodology: {
+    axes: string[]; n_requested: number; warmup_samples_excluded: number; latency_repeats: number;
+    confusion_passes: number; tau: number; same_examples: boolean; models: boolean;
+    cold_start_excluded_from_latency: boolean; note: string; fixed_checks_note?: string;
+  };
+  strategies: Record<string, BenchmarkStrategy>;
+}
+export interface VoICase {
+  prompt: string; response: string; p_fail_after_t0: number; final_p_fail: number; action: Action;
+  bought_a_check: boolean; stopping_reason: string;
+  expensive_checks: { detector: string; tier: number; ran: boolean; p_fail_before: number; voi: number; check_cost: number; reason: string }[];
+}
+export interface VoIContrast { policy_id: string; safe: VoICase; uncertain: VoICase; note: string }
 export interface RuntimeObservability {
   uptime_seconds: number; requests: number; active_requests: number; throughput_rps: number; errors: number; overload_rejections: number; stream_aborts: number; max_concurrency: number;
   latency_ms: { p50: number; p95: number; p99: number; sample_count: number };
@@ -124,4 +149,6 @@ export const api = {
     }).then((r) => r.json() as Promise<{ recorded: boolean; detectors_refit: string[]; feedback_counts: Record<string, number>; threshold: number }>),
   cache: () => jget<CacheStatus>('/v1/oversight/cache'),
   informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),
+  benchmark: () => jget<BenchmarkEval>('/v1/oversight/benchmark'),
+  voiContrast: () => jget<VoIContrast>('/v1/oversight/voi-contrast'),
 };

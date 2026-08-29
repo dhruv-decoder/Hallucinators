@@ -1,16 +1,16 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Activity, Crosshair, Cpu, FlaskConical, Gauge, History, Info, LayoutGrid, LifeBuoy, MousePointerClick,
+  Activity, BarChart3, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Info, LayoutGrid, LifeBuoy, MousePointerClick,
   Play, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
-import { Action, AgentReceipt, api, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, Summary, UseCaseSpec } from "@/lib/api";
+import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, Card, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
-type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "quadrant" | "pnl" | "benchmark" | "runtime" | "replay" | "agents" | "compliance" | "detectors" | "help";
+type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "quadrant" | "pnl" | "voi" | "benchmarks" | "benchmark" | "runtime" | "replay" | "agents" | "compliance" | "detectors" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
   { group: "Set up", items: [
     { id: "playground", label: "Playground", icon: FlaskConical },
@@ -19,6 +19,7 @@ const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] 
     { id: "overview", label: "Overview", icon: LayoutGrid }, { id: "feed", label: "Live feed", icon: Rss },
     { id: "quadrant", label: "Confidently-wrong", icon: Crosshair }, { id: "pnl", label: "Oversight P&L", icon: Wallet } ] },
   { group: "Prove", items: [
+    { id: "voi", label: "VoI contrast", icon: GitCompareArrows }, { id: "benchmarks", label: "Public benchmarks", icon: BarChart3 },
     { id: "guarantee", label: "Risk guarantee", icon: ShieldCheck }, { id: "benchmark", label: "Latency & scale", icon: Gauge },
     { id: "runtime", label: "Runtime health", icon: Activity }, { id: "replay", label: "What-If replay", icon: History },
     { id: "agents", label: "Agent oversight", icon: Workflow } ] },
@@ -34,7 +35,9 @@ const TITLES: Record<View, [string, string]> = {
   feed: ["Live feed", "Every decision, as it happens, the audit trail behind each response"],
   quadrant: ["Confidently-wrong map", "The danger zone we exist to catch: sure of itself and wrong"],
   pnl: ["Oversight P&L", "Safer AND cheaper, a negative price tag, measured not asserted"],
-  benchmark: ["Latency & scale", "Does oversight slow the model down? Measure it."],
+  voi: ["VoI contrast", "Same engine, same policy: a safe response skips the expensive check, an uncertain one buys it"],
+  benchmarks: ["Public benchmarks", "The scientific evidence: Fixed HHEM vs ControlPlane on the same labelled examples"],
+  benchmark: ["Latency & scale", "Does oversight slow the model down? Measure the runtime overhead."],
   runtime: ["Runtime health", "Live service telemetry, saturation protection, and detector cost"],
   replay: ["What-If replay", "Re-run the same workload under different risk appetites, the proof engine"],
   agents: ["Agent oversight", "Catching compounding risk across a multi-step agent"],
@@ -154,6 +157,8 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             {view === "feed" && <Feed receipts={receipts} onOpen={setDrawer} />}
             {view === "quadrant" && <Quadrant receipts={receipts} />}
             {view === "pnl" && <PnlView summary={summary} net={net} />}
+            {view === "voi" && <VoIContrastView />}
+            {view === "benchmarks" && <PublicBenchmarks />}
             {view === "benchmark" && <Benchmark />}
             {view === "runtime" && <RuntimeHealth />}
             {view === "replay" && <Replay />}
@@ -445,15 +450,18 @@ function GetStarted({ onSend, busy }: { onSend: () => void; busy: boolean }) {
 function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: Summary | null; net: number[]; receipts: Receipt[]; onOpen: (r: Receipt) => void; onSend: () => void; busy: boolean }) {
   const s = summary;
   if (receipts.length === 0) return <GetStarted onSend={onSend} busy={busy} />;
+  const ba = s?.by_action ?? {};
+  const intercepted = (ba.escalate ?? 0) + (ba.block ?? 0) + (ba.auto_repair ?? 0);
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-6 gap-3 max-xl:grid-cols-3">
+      <div className="grid grid-cols-7 gap-3 max-2xl:grid-cols-4 max-xl:grid-cols-3 max-sm:grid-cols-2">
         <Kpi label="Decisions" value={s?.requests ?? 0} foot="overseen inline" />
         <Kpi label="Net P&L" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : "safety > savings"} info="Safety spend minus cost saved. Negative = oversight pays for itself." />
+        <Kpi label="Incidents intercepted" value={intercepted} tone={intercepted > 0 ? "good" : undefined} foot="repaired / escalated / blocked" info="Responses that triggered a protective action (auto-repair, escalation, or block). Measures intercepted responses, not real-world incidents." />
         <Kpi label="Cleared @ T0" value={`${s?.cleared_at_t0_pct ?? 100}%`} foot="free tier, ~0ms" info="Share resolved by free checks, the fast path." />
         <Kpi label="Scrutiny" value={`${(s?.scrutiny ?? 1).toFixed(2)}×`} foot="adaptive thermostat" info="Auto-scales verification with recent risk." />
-        <Kpi label="Escalations" value={s?.by_action?.escalate ?? 0} foot="to a human" />
-        <Kpi label="Blocks" value={s?.by_action?.block ?? 0} foot="unsafe / leaks" />
+        <Kpi label="Escalations" value={ba.escalate ?? 0} foot="to a human" />
+        <Kpi label="Blocks" value={ba.block ?? 0} foot="unsafe / leaks" />
       </div>
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
         <Card title="Cumulative oversight P&L" desc="Every point is a decision; below zero means the cost-axis savings are paying for the safety checks."><Sparkline series={net} /></Card>
@@ -675,6 +683,205 @@ function RuntimeHealth() {
   );
 }
 
+function download(name: string, mime: string, body: string) {
+  const url = URL.createObjectURL(new Blob([body], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Rows of the head-to-head table: label, reader for the value, formatter, and which direction is "better".
+const BENCH_ROWS: { k: string; get: (s: BenchmarkStrategy) => number; fmt: (v: number) => string; better: "low" | "high" }[] = [
+  { k: "Precision", get: (s) => s.confusion.performance.precision, fmt: (v) => v.toFixed(3), better: "high" },
+  { k: "Recall", get: (s) => s.confusion.performance.recall, fmt: (v) => v.toFixed(3), better: "high" },
+  { k: "F1", get: (s) => s.confusion.performance.f1, fmt: (v) => v.toFixed(3), better: "high" },
+  { k: "FPR (false alarms)", get: (s) => s.confusion.performance.fpr, fmt: (v) => v.toFixed(3), better: "low" },
+  { k: "FNR (misses)", get: (s) => s.confusion.performance.fnr, fmt: (v) => v.toFixed(3), better: "low" },
+  { k: "p50 latency", get: (s) => s.latency_ms.p50, fmt: (v) => `${v.toFixed(1)} ms`, better: "low" },
+  { k: "p95 latency", get: (s) => s.latency_ms.p95, fmt: (v) => `${v.toFixed(1)} ms`, better: "low" },
+  { k: "p99 latency", get: (s) => s.latency_ms.p99, fmt: (v) => `${v.toFixed(1)} ms`, better: "low" },
+  { k: "Expensive checks run", get: (s) => s.expensive_checks_run, fmt: (v) => `${v}`, better: "low" },
+  { k: "Cleared at T0", get: (s) => s.t0_clearance_pct, fmt: (v) => `${v}%`, better: "high" },
+];
+
+function PublicBenchmarks() {
+  const [data, setData] = useState<BenchmarkEval | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api.benchmark().then(setData).catch((e) => setErr(String(e))); }, []);
+
+  if (err) return <Card title="Public benchmark evidence"><div className="text-faint">No benchmark artifact loaded. Run <span className="font-mono text-ink">make eval-aggregate ARGS=&quot;--dataset halueval --limit 500 --warmup 20&quot;</span> to produce <span className="font-mono">artifacts/aggregate_eval.json</span>.</div></Card>;
+  if (!data) return <Card title="Public benchmark evidence"><div className="text-faint">Loading committed evaluation…</div></Card>;
+
+  const fx = data.strategies.fixed_checks, cp = data.strategies.controlplane;
+  const m = data.methodology;
+  const avoidedPct = fx && cp && fx.expensive_checks_run ? (1 - cp.expensive_checks_run / fx.expensive_checks_run) * 100 : 0;
+
+  const exportCsv = () => {
+    const header = ["metric", "fixed_hhem", "controlplane"];
+    const lines = [header.join(",")];
+    for (const r of BENCH_ROWS) lines.push([r.k, r.fmt(r.get(fx)), r.fmt(r.get(cp))].map((c) => `"${c}"`).join(","));
+    download("controlplane_benchmark.csv", "text/csv", lines.join("\n"));
+  };
+
+  const better = (r: typeof BENCH_ROWS[number]) => {
+    const a = r.get(fx), b = r.get(cp);
+    if (a === b) return false;
+    return r.better === "low" ? b < a : b > a;
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* headline */}
+      <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+        <Card className="flex flex-col justify-center">
+          <div className="text-[11px] uppercase tracking-wide text-faint">Expensive checks avoided</div>
+          <div className="num mt-1 text-4xl font-bold" style={{ color: "var(--accent)" }}>{avoidedPct.toFixed(1)}%</div>
+          <div className="mt-1 text-[12.5px] text-muted"><b className="num text-ink">{cp.expensive_checks_run}</b> purchased vs Fixed HHEM&rsquo;s <b className="num text-ink">{fx.expensive_checks_run}</b>, on the same {cp.n} examples.</div>
+        </Card>
+        <Card className="flex flex-col justify-center">
+          <div className="text-[11px] uppercase tracking-wide text-faint">Same recall, fewer false alarms</div>
+          <div className="num mt-1 text-4xl font-bold text-pass">FPR {cp.confusion.performance.fpr.toFixed(3)}</div>
+          <div className="mt-1 text-[12.5px] text-muted">down from <b className="num text-ink">{fx.confusion.performance.fpr.toFixed(3)}</b> at identical recall <b className="num text-ink">{cp.confusion.performance.recall.toFixed(3)}</b>.</div>
+        </Card>
+        <Card className="flex flex-col justify-center">
+          <div className="text-[11px] uppercase tracking-wide text-faint">Groundedness F1</div>
+          <div className="num mt-1 text-4xl font-bold text-pass">{cp.confusion.performance.f1.toFixed(3)}</div>
+          <div className="mt-1 text-[12.5px] text-muted">vs Fixed HHEM <b className="num text-ink">{fx.confusion.performance.f1.toFixed(3)}</b>{cp.confusion.performance.f1_ci_low != null ? ` · 95% CI [${cp.confusion.performance.f1_ci_low.toFixed(3)}, ${cp.confusion.performance.f1_ci_high?.toFixed(3)}]` : ""}.</div>
+        </Card>
+      </div>
+
+      {/* fixed vs adaptive visual */}
+      <Card title="Fixed verification vs ControlPlane" desc="Both hit the same recall on the same labelled examples. ControlPlane buys the expensive check only where the value beats the cost, so it clears the safe majority for free.">
+        {[["Fixed HHEM", fx, "var(--faint, #7a8b9a)"], ["ControlPlane", cp, "var(--accent)"]].map(([label, s, col]) => {
+          const st = s as BenchmarkStrategy; const pct = fx.expensive_checks_run ? (st.expensive_checks_run / fx.expensive_checks_run) * 100 : 0;
+          return (
+            <div key={label as string} className="mb-3 last:mb-0">
+              <div className="mb-1 flex items-center justify-between text-[13px]"><span className="font-medium">{label as string}</span>
+                <span className="num text-muted">{st.expensive_checks_run} / {fx.expensive_checks_run} expensive checks · recall {st.confusion.performance.recall.toFixed(3)} · FPR {st.confusion.performance.fpr.toFixed(3)}</span></div>
+              <div className="h-3 overflow-hidden rounded-full border border-line bg-[color:var(--bg-2)]"><div className="h-full" style={{ width: `${pct}%`, background: col as string }} /></div>
+            </div>
+          );
+        })}
+        <div className="mt-3 rounded-lg border border-dashed border-line-2 bg-bg-2 p-3 text-[13px] text-muted">
+          Same recall <b className="num text-ink">{cp.confusion.performance.recall.toFixed(3)}</b> · <b className="text-pass">{avoidedPct.toFixed(1)}% fewer expensive checks</b> · FPR <b className="num text-ink">{fx.confusion.performance.fpr.toFixed(3)}</b> → <b className="num text-pass">{cp.confusion.performance.fpr.toFixed(3)}</b>.
+        </div>
+      </Card>
+
+      {/* head-to-head table */}
+      <Card title="Head-to-head, same examples" desc="Performance axis (groundedness). Green marks where ControlPlane wins. Latency is local cascade execution only, not model/network time.">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="pill">dataset · HaluEval</span>
+          <span className="flex-1" />
+          <button className="btn text-xs" onClick={() => download("controlplane_benchmark.json", "application/json", JSON.stringify(data, null, 2))}><Download size={13} /> JSON</button>
+          <button className="btn text-xs" onClick={exportCsv}><Download size={13} /> CSV</button>
+        </div>
+        <table className="w-full border-collapse text-sm">
+          <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
+            <th className="border-b border-line p-2.5">metric</th>
+            <th className="border-b border-line p-2.5 text-right">Fixed HHEM</th>
+            <th className="border-b border-line p-2.5 text-right">ControlPlane</th></tr></thead>
+          <tbody>{BENCH_ROWS.map((r) => (
+            <tr key={r.k}>
+              <td className="border-b border-line p-2.5 text-muted">{r.k}</td>
+              <td className="num border-b border-line p-2.5 text-right">{r.fmt(r.get(fx))}</td>
+              <td className={`num border-b border-line p-2.5 text-right font-semibold ${better(r) ? "text-pass" : ""}`}>{r.fmt(r.get(cp))}</td>
+            </tr>))}
+          </tbody>
+        </table>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+        {/* HHEM participation */}
+        <Card title="HHEM participation" desc="Proof the expensive model actually ran, on the examples where its information was worth the cost.">
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <span className="text-muted">candidate expensive checks</span><span className="num">{cp.expensive_checks_run + cp.expensive_checks_skipped}</span>
+            <span className="text-muted">executed (purchased)</span><span className="num text-ink">{cp.expensive_checks_run}</span>
+            <span className="text-muted">skipped by VoI</span><span className="num">{cp.expensive_checks_skipped}</span>
+            <span className="text-muted">cleared at T0 (free tier)</span><span className="num">{cp.t0_clearance_pct}%</span>
+            <span className="text-muted">eval errors</span><span className="num">{cp.errors}</span>
+          </div>
+          <p className="mt-3 text-[12px] text-faint">Fixed HHEM runs {fx.expensive_checks_run} of the same candidate checks unconditionally; ControlPlane runs {cp.expensive_checks_run}.</p>
+        </Card>
+
+        {/* methodology */}
+        <Card title="Methodology" desc="Everything a judge needs to trust the numbers.">
+          <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+            <span className="text-muted">dataset</span><span className="num">HaluEval</span>
+            <span className="text-muted">examples</span><span className="num">{m.n_requested}</span>
+            <span className="text-muted">warm-up excluded</span><span className="num">{m.warmup_samples_excluded}</span>
+            <span className="text-muted">confusion passes</span><span className="num">{m.confusion_passes}</span>
+            <span className="text-muted">latency repeats</span><span className="num">{m.latency_repeats}</span>
+            <span className="text-muted">threshold τ</span><span className="num">{m.tau}</span>
+            <span className="text-muted">models</span><span className="num">{m.models ? "enabled" : "off"}</span>
+            <span className="text-muted">same examples</span><span className="num">{m.same_examples ? "yes" : "no"}</span>
+          </div>
+          <p className="mt-3 text-[12px] text-faint">{m.note}</p>
+        </Card>
+      </div>
+      {data.artifact && <p className="text-center text-xs text-faint">Loaded from committed artifact <span className="num">{data.artifact}</span> · reproducible via <span className="num">make eval-aggregate</span></p>}
+    </div>
+  );
+}
+
+function VoICaseCard({ title, c, tone }: { title: string; c: VoIContrast["safe"]; tone: "safe" | "uncertain" }) {
+  const bought = c.bought_a_check;
+  const col = tone === "safe" ? "var(--pass)" : "var(--annotate, #d9a221)";
+  const steps = [
+    { t: "T0 cheap checks", d: `residual failure p = ${c.p_fail_after_t0.toFixed(3)}` },
+    { t: bought ? "VoI > cost" : "VoI < cost", d: bought ? "the expensive check is worth buying" : "the expensive check cannot change the decision" },
+    { t: bought ? "Expensive check PURCHASED" : "Expensive check SKIPPED", d: c.expensive_checks.map((e) => `${e.ran ? "ran" : "skip"} ${e.detector}`).join(" · ") || "resolved at T0" },
+    { t: c.action.replace("_", " ").toUpperCase(), d: `final p_fail ${c.final_p_fail.toFixed(3)} · ${c.stopping_reason}` },
+  ];
+  return (
+    <Card className="flex flex-col" title={title}>
+      <div className="mb-2 rounded-lg border border-line bg-panel-2 p-3">
+        <div className="text-[11px] uppercase tracking-wide text-faint">prompt</div>
+        <div className="text-sm">{c.prompt}</div>
+        <div className="mt-1.5 text-[11px] uppercase tracking-wide text-faint">response</div>
+        <div className="text-sm text-muted">{c.response}</div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {steps.map((s, i) => (
+          <div key={i} className="rounded-lg border border-line bg-panel-2 p-2.5" style={{ borderLeft: `3px solid ${col}` }}>
+            <div className="text-[13px] font-semibold">{s.t}</div>
+            <div className="font-mono text-[11px] text-faint">{s.d}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3">
+        <span className="badge" style={{ background: `color-mix(in srgb, ${col} 18%, transparent)`, color: col }}>{bought ? "bought the check" : "skipped the check"}</span>
+      </div>
+    </Card>
+  );
+}
+
+function VoIContrastView() {
+  const [data, setData] = useState<VoIContrast | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
+  const go = async () => { setLoading(true); setErr(false); try { setData(await api.voiContrast()); } catch { setErr(true); } setLoading(false); };
+  useEffect(() => { go(); }, []);
+  return (
+    <div className="flex flex-col gap-4">
+      <Card desc="The single clearest proof that oversight is adaptive: two responses go through the same engine, the same detectors, and the same policy. Only the response differs. The VoI rule buys the expensive check exactly when the cheap checks leave enough uncertainty that the information is worth more than the check's cost.">
+        <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run VoI contrast"}</button>
+        {err && <div className="mt-3 text-faint">VoI contrast unavailable.</div>}
+      </Card>
+      {data && (
+        <>
+          <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+            <VoICaseCard title="Safe response" c={data.safe} tone="safe" />
+            <VoICaseCard title="Uncertain response" c={data.uncertain} tone="uncertain" />
+          </div>
+          <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
+            <h4 className="mb-1.5 text-[13px] text-accent">Same policy · {data.policy_id}</h4>{data.note}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Benchmark() {
   const [n, setN] = useState(2000), [w, setW] = useState(50000), [res, setRes] = useState<any>(null);
   const { prog, run } = useJob();
@@ -689,8 +896,8 @@ function Benchmark() {
       </div>
       {prog.on && <ProgressBar progress={prog.p} label={prog.label} />}
       <div className="mt-4 rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
-        <h4 className="mb-1.5 text-[13px] text-accent">Aggregate public benchmark</h4>
-        <p>For the final evidence run, execute <span className="font-mono text-ink">make eval-aggregate ARGS="--dataset halueval --limit 500 --warmup 20 --repeats 3"</span>. This excludes cold-start samples, compares the same labelled examples, and reports F1/recall/FPR plus p50/p95/p99 and expensive-check counts.</p>
+        <h4 className="mb-1.5 text-[13px] text-accent">This is runtime overhead, not detection quality</h4>
+        <p>This page measures only the wall-clock the oversight layer adds per request (local cascade, model call excluded), so p95 here is milliseconds. For the scientific quality/latency evidence on labelled public data (F1, recall, FPR, and Fixed HHEM vs ControlPlane), see the <b className="text-ink">Public benchmarks</b> page, which loads the committed <span className="font-mono">artifacts/aggregate_eval.json</span> from <span className="font-mono text-ink">make eval-aggregate</span>.</p>
       </div>
       {res && (
         <div className="mt-4">

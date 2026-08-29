@@ -539,6 +539,27 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             })
         return {"axis": "performance", "source": "synthetic_demo", "certificates": certs}
 
+    @app.get("/v1/oversight/benchmark")
+    def benchmark_eval() -> dict:
+        """Return the committed public-benchmark evaluation (Fixed HHEM vs ControlPlane on the same labelled examples).
+
+        This is the scientific quality/latency evidence (F1/recall/FPR, p50/p95/p99, expensive-check counts,
+        T0 clearance), distinct from the /jobs/benchmark runtime-overhead probe. Reads the artifact committed by
+        ``make eval-aggregate`` so the UI never hardcodes benchmark numbers that can drift out of sync.
+        """
+        artifact = Path(os.environ.get("CONTROLPLANE_BENCHMARK_ARTIFACT", "artifacts/aggregate_eval.json"))
+        if not artifact.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="no benchmark artifact; run make eval-aggregate to produce artifacts/aggregate_eval.json",
+            )
+        try:
+            data = json.loads(artifact.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 - surface a clear error to the UI
+            raise HTTPException(status_code=500, detail="benchmark artifact unreadable") from exc
+        data["artifact"] = str(artifact)
+        return data
+
     @app.get("/v1/oversight/compliance")
     def compliance() -> dict:
         """Map the recorded receipts to EU AI Act / ISO 42001 / NIST AI RMF controls (JSON)."""

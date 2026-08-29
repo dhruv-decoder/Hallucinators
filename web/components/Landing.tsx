@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight, CircleDollarSign, FileCheck2, GitBranch, Gauge, ShieldCheck, Workflow, Zap,
 } from "lucide-react";
-import { api, Summary } from "@/lib/api";
+import { api, BenchmarkEval, Summary } from "@/lib/api";
 import { usd } from "@/lib/format";
 import { ThemeToggle } from "./theme";
 
@@ -23,11 +23,14 @@ const AXES = [
   { c: "var(--pass)", t: "Cost", d: "Is there a cheaper path to the same quality? Route-downs and cache hits, the savings that fund the safety checks." },
   { c: "var(--block)", t: "Responsibility", d: "Is it unsafe or leaking data? PII, prompt-injection and unsafe-content gates, redacted or blocked before it ships." },
 ];
-const PROOF = [
-  { k: "Groundedness F1", v: "0.30 → 0.76", s: "real HaluEval: cheap check → cascade+HHEM" },
-  { k: "Added latency (p95)", v: "0.16 ms", s: "measured, ~7,100 req/s on a laptop" },
-  { k: "Cleared at T0", v: "100%", s: "safe majority never leaves the free tier" },
-  { k: "Oversight P&L", v: "net-negative", s: "savings outweigh safety spend" },
+// Proof numbers are derived live from the committed benchmark artifact (artifacts/aggregate_eval.json), never
+// hardcoded, so the landing page can never drift out of sync with the Public benchmarks page. These strings are
+// only the fallback shown before the artifact loads (or if the backend is cold).
+const PROOF_FALLBACK = [
+  { k: "Groundedness F1", v: "loading", s: "HaluEval, Fixed HHEM vs ControlPlane" },
+  { k: "False-alarm rate", v: "loading", s: "same recall, fewer false positives" },
+  { k: "Expensive checks avoided", v: "loading", s: "vs fixed verification" },
+  { k: "Cleared at T0", v: "loading", s: "safe majority stays on the free tier" },
 ];
 const DIFF = [
   { icon: CircleDollarSign, t: "Self-funding P&L", d: "Cost-axis savings (real cache-bypass + route-down) offset the safety checks, a live ledger. A demonstrated mechanism; measured on the real-model path, counterfactual portions labelled as such." },
@@ -38,8 +41,25 @@ const DIFF = [
 
 export function Landing({ onLaunch }: { onLaunch: () => void }) {
   const [s, setS] = useState<Summary | null>(null);
-  useEffect(() => { api.summary().then(setS).catch(() => {}); }, []);
+  const [b, setB] = useState<BenchmarkEval | null>(null);
+  useEffect(() => {
+    api.summary().then(setS).catch(() => {});
+    api.benchmark().then(setB).catch(() => {});
+  }, []);
   const net = s?.net_usd ?? null;
+
+  const cp = b?.strategies?.controlplane, fx = b?.strategies?.fixed_checks;
+  const f1 = cp ? cp.confusion.performance.f1.toFixed(3) : null;
+  const f1delta = cp && fx ? cp.confusion.performance.f1 - fx.confusion.performance.f1 : null;
+  const fpr = cp ? cp.confusion.performance.fpr.toFixed(3) : null;
+  const avoided = cp && fx && fx.expensive_checks_run ? (1 - cp.expensive_checks_run / fx.expensive_checks_run) * 100 : null;
+  const t0 = cp ? cp.t0_clearance_pct : null;
+  const PROOF = cp && fx ? [
+    { k: "Groundedness F1", v: `${f1}`, s: `HaluEval${f1delta != null ? ` · +${f1delta.toFixed(3)} vs fixed HHEM` : ""}` },
+    { k: "False-alarm rate", v: `${fpr}`, s: `down from ${fx.confusion.performance.fpr.toFixed(3)}, same recall ${cp.confusion.performance.recall.toFixed(3)}` },
+    { k: "Expensive checks avoided", v: `${avoided?.toFixed(1)}%`, s: `${cp.expensive_checks_run} vs ${fx.expensive_checks_run} checks purchased` },
+    { k: "Cleared at T0", v: `${t0}%`, s: "safe majority stays on the free tier" },
+  ] : PROOF_FALLBACK;
 
   return (
     <div className="min-h-screen">
@@ -74,8 +94,8 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
         <div className="animate-fadeup mx-auto mt-12 grid max-w-[760px] grid-cols-3 gap-px overflow-hidden rounded-xl border border-line bg-line" style={{ animationDelay: ".2s" }}>
           {[
             ["Oversight P&L", net == null ? "live" : usd(net), net == null ? "connecting" : net < 0 ? "self-funding" : "this window"],
-            ["Added latency p95", "0.16 ms", "measured"],
-            ["Caught on real data", "F1 0.76", "HaluEval groundedness"],
+            ["Groundedness F1", f1 ?? "live", f1delta != null ? `HaluEval, +${f1delta.toFixed(3)} vs fixed` : "HaluEval, measured"],
+            ["Expensive checks avoided", avoided != null ? `${avoided.toFixed(1)}%` : "live", "vs fixed HHEM, same recall"],
           ].map(([k, v, sub]) => (
             <div key={k} className="bg-panel px-5 py-4">
               <div className="text-[11px] uppercase tracking-wide text-faint">{k}</div>

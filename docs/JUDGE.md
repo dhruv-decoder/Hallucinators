@@ -110,7 +110,7 @@ measured or not runnable, it's not a 4+.)*
    extrapolation (tens of thousands/week → ₹ impact). Never present simulated numbers as production numbers.
 
 ## PART 4 — Questions the AI panel will likely ask (rehearse answers)
-- "How is this different from Guardrails / NeMo / Lakera / Arize?" → `PLAN.md` §4 one-liner.
+- "How is this different from Guardrails / NeMo / Lakera / Arize?" → those watch, guard, or observe separately and after the fact; ControlPlane runs one VoI-gated verdict across performance, cost, and responsibility, with a conformal guarantee and a self-funding P&L.
 - "With no ground truth, how do you know a claim is wrong?" → self-consistency / semantic entropy + groundedness; ground truth only in offline eval.
 - "How do you avoid alert fatigue?" → one calibrated expected-loss threshold; show the chosen precision/recall point.
 - "Prove it's actually cheaper." → live P&L + Replay counterfactual + `make eval` baselines.

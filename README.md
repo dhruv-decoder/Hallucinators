@@ -29,7 +29,8 @@ One layer, three coupled risks, one verdict:
 Existing tools *watch*, *guard*, *observe*, or *cut cost* — separately, after the fact, with four different
 verdicts. ControlPlane runs oversight as one economic decision across three axes: it only spends on a check
 when the check's expected reduction in loss beats its own cost and latency. See
-[docs/PLAN.md](docs/PLAN.md) §3–§4 for the full positioning and competitive comparison.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/JUDGE.md](docs/JUDGE.md) for the full positioning
+and competitive comparison.
 
 ## What runs today
 
@@ -184,13 +185,12 @@ controlplane/         # the Python package
   demo/               # end-to-end runnable demos
 web/                  # Next.js + TypeScript + Tailwind product frontend (served by FastAPI as one service)
 tests/                # unit tests
-docs/                 # WALKTHROUGH (start here), PLAN, ARCHITECTURE, JUDGE, DECISIONS, WORKPLAN
-  reference/          # competition briefs and the Round-1 solution
+docs/                 # WALKTHROUGH (start here), ARCHITECTURE, JUDGE, DECISIONS, EVIDENCE, DEMO, DEPLOY
 ```
 
 ## Documentation
 
-- [docs/PLAN.md](docs/PLAN.md) — the master plan (scope, architecture, roadmap).
+- [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — start here: every component and the user flow, with diagrams.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the engine works, including the VoI derivation.
 - [docs/DECISIONS.md](docs/DECISIONS.md) — architecture decision records.
 - [docs/JUDGE.md](docs/JUDGE.md) — the R2 brief decoded into a rubric we self-score against.

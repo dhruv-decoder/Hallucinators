@@ -2,7 +2,7 @@
 
 How the ControlPlane oversight engine works, end to end. This describes what is implemented today — the
 decision engine, the What-If/Replay simulator, **and now the OpenAI-compatible proxy (The Tower) and the
-Control-Tower dashboard** (section 14). The richer model-backed detectors are tracked in [PLAN.md](PLAN.md).
+Control-Tower dashboard** (section 14).
 For a gentler, diagram-led tour of the whole system and the user flow, read [WALKTHROUGH.md](WALKTHROUGH.md).
 
 ## 1. The one idea

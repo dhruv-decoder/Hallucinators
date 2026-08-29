@@ -5,14 +5,13 @@ import {
 } from "lucide-react";
 import { api, BenchmarkEval, Summary } from "@/lib/api";
 import { usd } from "@/lib/format";
+import { BrandMark } from "./ui";
 import { ThemeToggle } from "./theme";
 
 function Logo() {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="relative h-7 w-7 flex-none rounded-[7px]" style={{ background: "linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #0a3))", boxShadow: "var(--glow)" }}>
-        <div className="absolute inset-2 rounded-[3px] border-2" style={{ borderColor: "color-mix(in srgb, var(--accent-ink) 55%, transparent)" }} />
-      </div>
+      <BrandMark size={28} />
       <div className="leading-tight"><b className="text-[15px]">ControlPlane</b><span className="block text-[11px] text-faint">The Tower</span></div>
     </div>
   );

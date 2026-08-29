@@ -4,6 +4,18 @@ import { useEffect, useState } from "react";
 
 export const cn = (...a: any[]) => clsx(a);
 
+// The brand mark. The source art sits on a white canvas, so we frame it in a white rounded tile and zoom
+// slightly to crop the margins, so it reads as a crisp app icon on both the dark and light themes.
+export function BrandMark({ size = 28, className }: { size?: number; className?: string }) {
+  return (
+    <span className={cn("relative flex-none overflow-hidden rounded-[7px] bg-white ring-1 ring-black/5", className)}
+      style={{ width: size, height: size, boxShadow: "var(--glow)" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo.png" alt="ControlPlane" className="absolute inset-0 h-full w-full object-cover" style={{ transform: "scale(1.28)" }} />
+    </span>
+  );
+}
+
 export function Card({ title, desc, children, className }: { title?: string; desc?: string; children?: React.ReactNode; className?: string }) {
   return (
     <div className={cn("card", className)}>

@@ -7,7 +7,7 @@ import {
 import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, StreamGuardCase, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
 import { createWorkspace, logout, setWorkspace, useAuth } from "@/lib/auth";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
-import { Badge, Card, EmptyState, Kpi, ProgressBar, toast, Toaster } from "./ui";
+import { Badge, BrandMark, Card, EmptyState, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
@@ -112,9 +112,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
       {/* sidebar */}
       <aside className="sticky top-0 flex h-screen flex-col gap-1 overflow-auto border-r border-line bg-bg-2 p-3">
         <button onClick={onHome} title="Back to home" className="flex items-center gap-2.5 px-2.5 pb-4 pt-1.5 text-left">
-          <div className="relative h-7 w-7 flex-none rounded-[7px]" style={{ background: "linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #0a3))", boxShadow: "var(--glow)" }}>
-            <div className="absolute inset-2 rounded-[3px] border-2" style={{ borderColor: "color-mix(in srgb, var(--accent-ink) 55%, transparent)" }} />
-          </div>
+          <BrandMark size={28} />
           <div className="max-lg:hidden"><b className="text-sm">ControlPlane</b><small className="block text-[11px] text-faint">The Tower</small></div>
         </button>
         {NAV.map((g) => (
@@ -171,7 +169,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
           </button>
         </header>
 
-        <main className="mx-auto w-full max-w-[1480px] p-6">
+        <main className="mx-auto w-full max-w-[1560px] p-6 2xl:max-w-[2040px] 2xl:px-10 2xl:py-8">
           {guide && <Onboard onDismiss={dismissGuide} onSend={sendTraffic} busy={busy} />}
           <div key={view} className="viewfade">
             {view === "playground" && <Playground policies={summary?.policies} onDecision={() => api.summary().then(setSummary)} onOpen={setDrawer} />}
@@ -343,7 +341,11 @@ function Field({ label, value, opts, onChange, hint }: { label: string; value: s
 }
 
 function Configurator({ onApplied }: { onApplied: () => void }) {
-  const [spec, setSpec] = useState<UseCaseSpec>({ use_case: "customer_support", weekly_volume: 50000, latency_budget: "interactive", risk_tolerance: "medium", data_sensitivity: "internal", geo: "EU" });
+  // Pre-fill the use case from the active workspace, so "create a workspace -> tune its policy" flows straight
+  // through (the Dashboard remounts on workspace switch, so this initialiser re-runs per workspace).
+  const auth = useAuth();
+  const activeWs = auth.workspaces.find((w) => w.id === auth.workspace);
+  const [spec, setSpec] = useState<UseCaseSpec>({ use_case: activeWs?.use_case ?? "customer_support", weekly_volume: 50000, latency_budget: "interactive", risk_tolerance: "medium", data_sensitivity: "internal", geo: "EU" });
   const [res, setRes] = useState<GeneratedPolicy | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof UseCaseSpec) => (v: string) => setSpec((s) => ({ ...s, [k]: v }));
@@ -362,6 +364,7 @@ function Configurator({ onApplied }: { onApplied: () => void }) {
   return (
     <div className="grid grid-cols-[380px_1fr] gap-4 max-lg:grid-cols-1">
       <Card title="Describe your use case" desc="ControlPlane maps these business facts to the value-of-information knobs, no manual tuning.">
+        {activeWs && <div className="mb-3 rounded-lg border border-line bg-panel-2 px-3 py-2 text-[12px] text-muted">Tuning the <b className="text-ink">{activeWs.name}</b> workspace, pre-filled from its use case. Applying the policy affects only this workspace.</div>}
         <div className="mb-3">
           <div className="mb-1 text-[12px] font-medium text-muted">Start from a preset</div>
           <div className="flex flex-wrap gap-1.5">
@@ -951,7 +954,7 @@ function WorkspaceMenu() {
   const label = auth.guest ? "Guest sandbox" : (active?.name ?? "Select workspace");
   const create = async () => {
     if (!name.trim()) return;
-    try { await createWorkspace(name.trim(), useCase); toast("Workspace created", name, "ok"); setCreating(false); setName(""); setOpen(false); }
+    try { await createWorkspace(name.trim(), useCase); toast("Workspace created", `${name} is now active, open Use-case setup to tune its policy`, "ok"); setCreating(false); setName(""); setOpen(false); }
     catch (e) { toast("Failed", String(e), "err"); }
   };
   return (

@@ -2,14 +2,13 @@
 import { useState } from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { continueAsGuest, login, loginDemo, signup } from "@/lib/auth";
+import { BrandMark } from "./ui";
 import { ThemeToggle } from "./theme";
 
 function Logo() {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="relative h-8 w-8 flex-none rounded-[8px]" style={{ background: "linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #0a3))", boxShadow: "var(--glow)" }}>
-        <div className="absolute inset-2 rounded-[3px] border-2" style={{ borderColor: "color-mix(in srgb, var(--accent-ink) 55%, transparent)" }} />
-      </div>
+      <BrandMark size={32} />
       <div className="leading-tight"><b className="text-[16px]">ControlPlane</b><span className="block text-[11px] text-faint">The Tower</span></div>
     </div>
   );

@@ -185,8 +185,14 @@ def run(
             "confusion_passes": 1,
             "cold_start_excluded_from_latency": True,
             "axes": [a.value for a in _AXES],
-            "note": "End-to-end model/network latency is not included; the latency columns measure local cascade execution only.",
-            "fixed_checks_note": "fixed_checks uses always_run=True over the same detector stack; no_oversight and flag_everything are prediction baselines.",
+            "note": (
+                "End-to-end model/network latency is not included; the latency columns measure "
+                "local cascade execution only."
+            ),
+            "fixed_checks_note": (
+                "fixed_checks uses always_run=True over the same detector stack; no_oversight and "
+                "flag_everything are prediction baselines."
+            ),
         },
         "strategies": {s.name: asdict(s) for s in (none, fixed, cp, all_flag)},
     }

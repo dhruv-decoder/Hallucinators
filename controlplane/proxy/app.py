@@ -37,7 +37,6 @@ from fastapi.staticfiles import StaticFiles
 
 from controlplane.cascade.detectors.responsibility import RegexPiiDetector
 from controlplane.core.types import RequestContext
-from controlplane.startup import ModelWarmup, env_bool
 from controlplane.proxy.openai_schemas import (
     ChatCompletionRequest,
     OversightBlock,
@@ -46,6 +45,7 @@ from controlplane.proxy.openai_schemas import (
 )
 from controlplane.proxy.oversight import OverseeResult, OversightService
 from controlplane.proxy.upstream import Generation, build_upstream
+from controlplane.startup import ModelWarmup, env_bool
 
 _STATIC = Path(__file__).parent / "static"
 

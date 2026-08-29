@@ -4,9 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 
-import pytest
-
-from controlplane.eval.aggregate import _baseline_from_truth, _cm_dict, _strategy_from_runs, run
+from controlplane.eval.aggregate import _baseline_from_truth, _cm_dict, run
 from controlplane.eval.dataset import synthetic_labeled_dataset
 from controlplane.eval.metrics import ConfusionMatrix
 from controlplane.startup import ModelWarmup, WarmupState, env_bool
@@ -90,7 +88,10 @@ def test_warmup_error_fails_closed(monkeypatch):
         raise RuntimeError("model unavailable")
 
     monkeypatch.setattr(warm, "_warm_hhem", bad)
-    monkeypatch.setattr(warm, "_warm_semantic_cache", lambda service: warm._component("semantic_cache", "skipped", "test"))
+    monkeypatch.setattr(
+        warm, "_warm_semantic_cache",
+        lambda service: warm._component("semantic_cache", "skipped", "test"),
+    )
 
     async def go():
         task = warm.start(service=object())
@@ -226,12 +227,16 @@ def test_makefile_exposes_aggregate_eval():
 
 def test_enabled_warmup_gates_readiness_until_complete(monkeypatch):
     from fastapi.testclient import TestClient
+
     from controlplane.proxy.app import create_app
     from controlplane.startup import ModelWarmup
 
     monkeypatch.setenv("CONTROLPLANE_WARMUP", "1")
     monkeypatch.setattr(ModelWarmup, "_warm_hhem", lambda self: self._component("hhem", "skipped", "test"))
-    monkeypatch.setattr(ModelWarmup, "_warm_semantic_cache", lambda self, service: self._component("cache", "skipped", "test"))
+    monkeypatch.setattr(
+        ModelWarmup, "_warm_semantic_cache",
+        lambda self, service: self._component("cache", "skipped", "test"),
+    )
 
     with TestClient(create_app(recorder_path=None, force_simulated=True)) as client:
         response = client.get("/readyz")
@@ -244,6 +249,7 @@ def test_enabled_warmup_gates_readiness_until_complete(monkeypatch):
 
 def test_enabled_warmup_reports_failure_without_claiming_ready(monkeypatch):
     from fastapi.testclient import TestClient
+
     from controlplane.proxy.app import create_app
     from controlplane.startup import ModelWarmup
 
@@ -254,7 +260,10 @@ def test_enabled_warmup_reports_failure_without_claiming_ready(monkeypatch):
         raise RuntimeError("simulated load failure")
 
     monkeypatch.setattr(ModelWarmup, "_warm_hhem", bad)
-    monkeypatch.setattr(ModelWarmup, "_warm_semantic_cache", lambda self, service: self._component("cache", "skipped", "test"))
+    monkeypatch.setattr(
+        ModelWarmup, "_warm_semantic_cache",
+        lambda self, service: self._component("cache", "skipped", "test"),
+    )
 
     with TestClient(create_app(recorder_path=None, force_simulated=True)) as client:
         response = client.get("/readyz")
@@ -268,6 +277,7 @@ def test_enabled_warmup_reports_failure_without_claiming_ready(monkeypatch):
 def test_readyz_remains_compatible_with_existing_contract(monkeypatch):
     monkeypatch.delenv("CONTROLPLANE_WARMUP", raising=False)
     from fastapi.testclient import TestClient
+
     from controlplane.proxy.app import create_app
 
     with TestClient(create_app(recorder_path=None, force_simulated=True)) as client:

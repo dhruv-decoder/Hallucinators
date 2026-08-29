@@ -872,7 +872,7 @@ function Help() {
 }
 
 /* ---- receipt drawer ---- */
-function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onOpenVerify?: (id: string) => void }) {
+function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () => void }) {
   const [verification, setVerification] = useState<Awaited<ReturnType<typeof api.verifyReceipt>> | null>(null);
   const [verifying, setVerifying] = useState(false);
   const verify = async () => {

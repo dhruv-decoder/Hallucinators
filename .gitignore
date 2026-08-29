@@ -25,6 +25,7 @@ recorder_log.jsonl
 # Local-only deliverables and backups (kept locally, not shared)
 IDEA_PROPOSAL.md
 IDEA_PROPOSAL.pdf
+DEMO_AND_UI_MAP.md
 *.bundle
 
 # OS / editor

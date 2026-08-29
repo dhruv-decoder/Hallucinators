@@ -83,6 +83,27 @@ class PnlLedger:
             token_source=str(ctx.meta.get("token_source", "estimated")),
         )
 
+    def replay(self, receipts: list) -> None:
+        """Reconstruct running totals from persisted receipts so the P&L is consistent across restarts.
+
+        The durable recorder reloads its receipts on start; without this the ledger would show $0 next to a
+        non-zero request count. Headline totals come from each receipt's booked P&L; the savings/spend
+        breakdown is rebuilt from the receipt's cost opportunities and signals. Early-abort savings are booked
+        out-of-band by the agent auditor (not per-receipt), so they reset to zero on restart -- a minor gap.
+        """
+        for r in receipts:
+            self.total_cost_saved += r.pnl.cost_saved_usd
+            self.total_safety_spend += r.pnl.safety_spend_usd
+            self.request_count += 1
+            for opp in r.cost_opportunities:
+                if opp.recommendation == CostAction.CACHE_HIT:
+                    self.saved_cache += opp.estimated_savings_usd
+                elif opp.recommendation == CostAction.ROUTE_DOWN:
+                    self.saved_route_down += opp.estimated_savings_usd
+            for sig in r.signals:
+                if sig.cost_usd:
+                    self.spend_by_check[sig.name] = self.spend_by_check.get(sig.name, 0.0) + sig.cost_usd
+
     def book_abort(self, amount: float) -> None:
         """Book spend avoided by aborting a run early (e.g. a looping agent) as cost saved."""
         self.saved_abort += amount

@@ -23,7 +23,7 @@ export interface Summary {
   human_review_usd: number; self_funding: boolean;
   projection: { weekly_volume: number; weekly_net_usd: number; annual_net_usd: number; note: string };
   by_action: Partial<Record<Action, number>>; cleared_at_t0_pct: number; scrutiny: number; chain_valid: boolean;
-  active_policy: string; policies: Record<string, string>; models: { groundedness: string; pii: string; safety?: string; judge: string };
+  active_policy: string; policies: Record<string, string>; builtin_policies?: string[]; models: { groundedness: string; pii: string; safety?: string; judge: string };
   savings_breakdown?: { route_down: number; cache: number; early_abort: number };
   spend_breakdown?: Record<string, number>;
 }
@@ -127,6 +127,7 @@ export const api = {
   summary: () => jget<Summary>("/v1/oversight/summary"),
   receipts: (limit = 80) => jget<{ receipts: Receipt[] }>(`/v1/oversight/receipts?limit=${limit}`),
   simulate: () => jpost<{ processed: number }>("/v1/oversight/simulate"),
+  reset: () => jpost<{ reset: boolean; cleared_receipts: number; dropped_policies: string[] }>("/v1/oversight/reset"),
   setPolicy: (policy: string) =>
     fetch(`${API_BASE}/v1/oversight/policy`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ policy }),

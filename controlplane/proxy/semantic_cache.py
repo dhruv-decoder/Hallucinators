@@ -217,6 +217,11 @@ class SemanticResponseCache:
             while len(self._entries) > self.max_entries:
                 self._entries.popitem(last=False)
 
+    def clear(self) -> None:
+        """Drop all cached entries -- used by the demo 'reset' control."""
+        with self._lock:
+            self._entries.clear()
+
     def stats(self) -> dict:
         with self._lock:
             return {

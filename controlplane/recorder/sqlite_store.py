@@ -53,6 +53,14 @@ class SqliteRecorder:
         self._last_hash = receipt.hash_self
         return receipt
 
+    def clear(self) -> None:
+        """Wipe the audit log and restart the hash chain -- used by the demo 'reset' control."""
+        self._conn.execute("DELETE FROM receipts")
+        self._conn.execute("DELETE FROM sqlite_sequence WHERE name='receipts'")
+        self._conn.commit()
+        self.receipts = []
+        self._last_hash = ""
+
     def verify_chain(self) -> bool:
         prev = ""
         for receipt in self.receipts:

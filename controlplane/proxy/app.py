@@ -411,6 +411,11 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             "receipt": res.receipt.model_dump(mode="json"),
         }
 
+    @app.post("/v1/oversight/reset")
+    def reset_demo() -> dict:
+        """Clear demo state (audit log, P&L, cache, generated policies) back to a clean slate."""
+        return service.reset()
+
     @app.post("/v1/oversight/simulate")
     async def simulate() -> dict:
         """Fire the scripted demo workload through the real pipeline (the UI's 'Send demo traffic' button).

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity, BarChart3, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Info, LayoutGrid, LifeBuoy, MousePointerClick,
-  Play, Radio, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
+  Play, Radio, RotateCcw, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
 import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, StreamGuardCase, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
@@ -83,9 +83,21 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
   const [busy, setBusy] = useState(false);
   const sendTraffic = async () => {
     setBusy(true);
-    try { await api.simulate(); toast("Demo traffic sent", "9 requests overseen", "ok"); }
+    try { const r = await api.simulate(); toast("Demo traffic sent", `${r.processed} requests overseen`, "ok"); }
     catch (e) { toast("Failed", String(e), "err"); }
     setBusy(false);
+  };
+  const [resetting, setResetting] = useState(false);
+  const resetData = async () => {
+    if (!window.confirm("Clear all demo data? This wipes the audit log, P&L, cache, and any generated policies back to a clean slate.")) return;
+    setResetting(true);
+    try {
+      const r = await api.reset();
+      ids.current.clear(); setReceipts([]); setNet([]);
+      const s = await api.summary(); setSummary(s);
+      toast("Demo data reset", `${r.cleared_receipts} receipts cleared${r.dropped_policies.length ? `, ${r.dropped_policies.length} generated policies dropped` : ""}`, "ok");
+    } catch (e) { toast("Reset failed", String(e), "err"); }
+    setResetting(false);
   };
 
   const [guide, setGuide] = useState(false);
@@ -138,14 +150,21 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             models <b className="text-ink">{summary?.models?.groundedness ?? "-"} · judge:{summary?.models?.judge ?? "off"}</b>
           </span>
           <ThemeToggle />
-          {summary && (
-            <select className="btn" value={summary.active_policy}
-              onChange={(e) => { const k = Object.entries(summary.policies).find(([, v]) => v === e.target.value)?.[0]; if (k) api.setPolicy(k).then(() => toast("Policy switched", e.target.value, "ok")); }}>
-              {Object.values(summary.policies).map((p) => <option key={p}>{p}</option>)}
-            </select>
-          )}
+          {summary && (() => {
+            const builtin = new Set(summary.builtin_policies ?? []);
+            return (
+              <select className="btn" value={summary.active_policy} title="Active oversight policy. 'demo' profiles ship built-in; others were generated from Use-case setup."
+                onChange={(e) => { const k = Object.entries(summary.policies).find(([, v]) => v === e.target.value)?.[0]; if (k) api.setPolicy(k).then(() => toast("Policy switched", e.target.value, "ok")); }}>
+                {Object.entries(summary.policies).map(([k, p]) => <option key={p} value={p}>{p}{builtin.has(k) ? "  · demo" : "  · generated"}</option>)}
+              </select>
+            );
+          })()}
+          <button className="btn inline-flex items-center gap-1.5" disabled={resetting || busy} onClick={resetData}
+            title="Clear the audit log, P&L, cache, and generated policies back to a clean slate">
+            <RotateCcw size={14} />{resetting ? "resetting…" : "Reset"}
+          </button>
           <button className="btn-primary inline-flex items-center gap-1.5" disabled={busy} onClick={sendTraffic}
-            title="Runs 9 realistic requests through the oversight engine so the dashboard fills with live decisions">
+            title="Runs a burst of realistic requests through the oversight engine so the dashboard fills with live decisions">
             <Play size={14} />{busy ? "running…" : "Send demo traffic"}
           </button>
         </header>
@@ -426,7 +445,7 @@ function Onboard({ onDismiss, onSend, busy }: { onDismiss: () => void; onSend: (
 
 function GetStarted({ onSend, busy }: { onSend: () => void; busy: boolean }) {
   const steps = [
-    { n: "1", t: "Send demo traffic", d: "Nine realistic support/agent requests run through the value-of-information cascade, most clear instantly, a few climb to a model or a human." },
+    { n: "1", t: "Send demo traffic", d: "A burst of realistic support/agent requests runs through the value-of-information cascade, most clear instantly, a few climb to a model or a human." },
     { n: "2", t: "Watch the P&L go negative", d: "Cost-axis savings (route-downs, cache) pay for the safety checks, oversight with a negative price tag." },
     { n: "3", t: "Drill into any decision", d: "Every response has a signed receipt: the per-axis verdict, which checks ran and why, and the action taken." },
   ];

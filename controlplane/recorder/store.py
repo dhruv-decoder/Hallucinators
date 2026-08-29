@@ -47,6 +47,13 @@ class JsonlRecorder:
             with self.path.open("a") as fh:
                 fh.write(json.dumps(receipt.model_dump(mode="json")) + "\n")
 
+    def clear(self) -> None:
+        """Wipe the audit log and restart the hash chain -- used by the demo 'reset' control."""
+        self.receipts = []
+        self._last_hash = ""
+        if self.path is not None:
+            self.path.write_text("")
+
     def verify_chain(self) -> bool:
         """Return True if every receipt's hash matches its contents and links to its predecessor."""
         prev = ""

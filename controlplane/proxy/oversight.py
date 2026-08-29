@@ -172,7 +172,12 @@ class OversightService:
             self.recorder = SqliteRecorder(recorder_path)
         else:
             self.recorder = JsonlRecorder(path=recorder_path)
+        # The durable recorder reloads persisted receipts on start; replay them into the fresh ledger so the
+        # P&L totals stay consistent with the request count across restarts (no "$0 next to N requests").
+        if self.recorder.receipts:
+            self.ledger.replay(self.recorder.receipts)
         self.policies = default_policies()
+        self.builtin_policy_keys = set(self.policies)  # so the UI can mark built-in vs generated profiles
         self.active_policy_key = "support_bot"
         self.thermostat = Thermostat() if use_thermostat else None
         self._subscribers = _Subscribers()
@@ -573,6 +578,31 @@ class OversightService:
             "threshold": self.feedback.min_samples,
         }
 
+    def reset(self) -> dict:
+        """Clear the demo state: wipe the audit log, reset the P&L ledger, cache, thermostat, and runtime
+        counters, and drop any generated policies back to the built-in defaults.
+
+        This is the principled answer to "the numbers keep growing / policies keep piling up on localhost":
+        the durable store is meant to accumulate (it's an audit log), so rather than silently capping it we
+        give an explicit, auditable reset. A fresh summary is pushed to any open dashboards.
+        """
+        with self._lock:
+            cleared = len(self.recorder.receipts)
+            dropped_policies = [k for k in self.policies if k not in self.builtin_policy_keys]
+            self.recorder.clear()
+            self.ledger = PnlLedger()
+            self.policies = default_policies()
+            self.active_policy_key = "support_bot"
+            if self.thermostat is not None:
+                self.thermostat = Thermostat()
+            self.semantic_cache.clear()
+            self.response_cache.clear()
+            self.runtime = RuntimeStats()
+            self.upstream_calls = self.cache_hits = self.exact_cache_hits = 0
+            self.semantic_cache_hits = self.cache_misses = self.route_down_events = 0
+            self._recent_signals.clear()
+        return {"reset": True, "cleared_receipts": cleared, "dropped_policies": dropped_policies}
+
     def summary(self) -> dict:
         """Aggregate state for the dashboard header + P&L card."""
         totals = self.ledger.totals()
@@ -623,6 +653,7 @@ class OversightService:
             "route_down_events": self.route_down_events,
             "active_policy": self.policy.id,
             "policies": {k: v.id for k, v in self.policies.items()},
+            "builtin_policies": sorted(self.builtin_policy_keys),
             "models": active_models(),
             "runtime": {
                 **self.runtime.snapshot(),

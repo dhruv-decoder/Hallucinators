@@ -603,7 +603,7 @@ class OversightService:
                 "weekly_volume": weekly_volume,
                 "weekly_net_usd": round(per_req_net * weekly_volume, 2),
                 "annual_net_usd": round(per_req_net * weekly_volume * 52, 2),
-                "note": "per-request net extrapolated to the brief's reference volume at sourced list prices; an estimate, not a bill",
+                "note": "per-request net extrapolated to the reference volume at sourced list prices; an estimate",
             },
             "by_action": by_action,
             "cleared_at_t0_pct": round(100.0 * cleared_at_t0 / n, 1) if n else 100.0,

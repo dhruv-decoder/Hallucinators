@@ -72,8 +72,13 @@ def _lenient() -> PolicyProfile:
 
 
 def replay_summary() -> dict:
-    """Compare oversight-off vs strict/balanced/lenient over the synthetic workload (What-If proof engine)."""
-    sim = WhatIfSimulator(synthetic_workload(), build_engine)
+    """Compare oversight-off vs strict/balanced/lenient over the synthetic workload (What-If proof engine).
+
+    Pinned to heuristic detectors (no HHEM/judge) so the comparison is fast and deterministic: the What-If is
+    about the risk *appetite* (action thresholds), not detector strength, and running a model on every example
+    across four scenarios would make the panel slow when the model tier is loaded.
+    """
+    sim = WhatIfSimulator(synthetic_workload(), lambda policy: build_engine(policy, use_models=False))
     results = sim.compare({"strict": _strict(), "balanced": _balanced(), "lenient": _lenient()})
     return {
         "scenarios": [

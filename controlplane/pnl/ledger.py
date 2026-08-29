@@ -35,6 +35,12 @@ class PnlLedger:
         self.total_cost_saved: float = 0.0
         self.total_safety_spend: float = 0.0
         self.request_count: int = 0
+        # Where the savings and the spend actually come from, so the "self-funding" story is legible rather
+        # than a single net number: route-down + cache + early-abort on the savings side, per-detector spend.
+        self.saved_route_down: float = 0.0
+        self.saved_cache: float = 0.0
+        self.saved_abort: float = 0.0
+        self.spend_by_check: dict[str, float] = {}
 
     def book(self, ctx: RequestContext, result: CascadeResult) -> PnlEntry:
         """Compute the P&L for one request, annotate its cost opportunities, and update totals."""
@@ -48,6 +54,7 @@ class PnlLedger:
             if cache_hit and opp.recommendation == CostAction.CACHE_HIT:
                 opp.estimated_savings_usd = base_cost
                 cost_saved = base_cost  # whole call avoided; do not also count route-down
+                self.saved_cache += base_cost
                 break
         if not cache_hit:
             for opp in result.cost_opportunities:
@@ -57,8 +64,12 @@ class PnlLedger:
                     saved = max(base_cost - cheaper_cost, 0.0)
                     opp.estimated_savings_usd = saved
                     cost_saved += saved
+                    self.saved_route_down += saved
 
         safety_spend = sum(sig.cost_usd for sig in result.signals)
+        for sig in result.signals:
+            if sig.cost_usd:
+                self.spend_by_check[sig.name] = self.spend_by_check.get(sig.name, 0.0) + sig.cost_usd
 
         self.total_cost_saved += cost_saved
         self.total_safety_spend += safety_spend
@@ -71,6 +82,19 @@ class PnlLedger:
             safety_spend_usd=safety_spend,
             token_source=str(ctx.meta.get("token_source", "estimated")),
         )
+
+    def book_abort(self, amount: float) -> None:
+        """Book spend avoided by aborting a run early (e.g. a looping agent) as cost saved."""
+        self.saved_abort += amount
+        self.total_cost_saved += amount
+
+    def savings_breakdown(self) -> dict[str, float]:
+        """Cost saved split by mechanism -- the three levers that fund the safety checks."""
+        return {
+            "route_down": self.saved_route_down,
+            "cache": self.saved_cache,
+            "early_abort": self.saved_abort,
+        }
 
     def totals(self) -> PnlEntry:
         """Running P&L across every request booked so far."""

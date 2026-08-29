@@ -2,15 +2,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity, BarChart3, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Info, LayoutGrid, LifeBuoy, MousePointerClick,
-  Play, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
+  Play, Radio, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
-import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
+import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, StreamGuardCase, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, Card, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
-type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "quadrant" | "pnl" | "voi" | "benchmarks" | "benchmark" | "runtime" | "replay" | "agents" | "compliance" | "detectors" | "help";
+type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "quadrant" | "pnl" | "voi" | "benchmarks" | "benchmark" | "runtime" | "replay" | "streamguard" | "agents" | "compliance" | "detectors" | "api" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
   { group: "Set up", items: [
     { id: "playground", label: "Playground", icon: FlaskConical },
@@ -22,10 +22,10 @@ const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] 
     { id: "voi", label: "VoI contrast", icon: GitCompareArrows }, { id: "benchmarks", label: "Public benchmarks", icon: BarChart3 },
     { id: "guarantee", label: "Risk guarantee", icon: ShieldCheck }, { id: "benchmark", label: "Latency & scale", icon: Gauge },
     { id: "runtime", label: "Runtime health", icon: Activity }, { id: "replay", label: "What-If replay", icon: History },
-    { id: "agents", label: "Agent oversight", icon: Workflow } ] },
+    { id: "streamguard", label: "StreamGuard", icon: Radio }, { id: "agents", label: "Agent oversight", icon: Workflow } ] },
   { group: "Govern", items: [
     { id: "compliance", label: "Compliance", icon: ScrollText }, { id: "detectors", label: "Detectors & models", icon: Cpu },
-    { id: "help", label: "Getting started", icon: LifeBuoy } ] },
+    { id: "api", label: "API / Integration", icon: Terminal }, { id: "help", label: "Getting started", icon: LifeBuoy } ] },
 ];
 const TITLES: Record<View, [string, string]> = {
   playground: ["Playground", "Type any prompt, a real model answers and ControlPlane oversees the response live"],
@@ -40,9 +40,11 @@ const TITLES: Record<View, [string, string]> = {
   benchmark: ["Latency & scale", "Does oversight slow the model down? Measure the runtime overhead."],
   runtime: ["Runtime health", "Live service telemetry, saturation protection, and detector cost"],
   replay: ["What-If replay", "Re-run the same workload under different risk appetites, the proof engine"],
+  streamguard: ["StreamGuard", "Predict-and-stop: a leaking response is aborted mid-stream, before the tokens leave"],
   agents: ["Agent oversight", "Catching compounding risk across a multi-step agent"],
   compliance: ["Compliance", "Receipts → EU AI Act / ISO 42001 / NIST AI RMF evidence"],
   detectors: ["Detectors & models", "The tiered stack: cheap first, model on the tail"],
+  api: ["API / Integration", "One-line, OpenAI-compatible: this is a gateway, not just a dashboard"],
   help: ["Getting started", "What this is and how to read it"],
 };
 export default function Dashboard({ onHome }: { onHome?: () => void }) {
@@ -131,6 +133,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             <div className="text-xs text-faint">{TITLES[view][1]}</div>
           </div>
           <span className="flex-1" />
+          <ReadyBadge />
           <span className="pill max-md:hidden" title="Which detectors are model-backed vs heuristic">
             models <b className="text-ink">{summary?.models?.groundedness ?? "-"} · judge:{summary?.models?.judge ?? "off"}</b>
           </span>
@@ -162,9 +165,11 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             {view === "benchmark" && <Benchmark />}
             {view === "runtime" && <RuntimeHealth />}
             {view === "replay" && <Replay />}
+            {view === "streamguard" && <StreamGuardView />}
             {view === "agents" && <Agents />}
             {view === "compliance" && <Compliance />}
             {view === "detectors" && <Detectors summary={summary} />}
+            {view === "api" && <ApiPanel />}
             {view === "help" && <Help />}
           </div>
           <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-xs text-faint max-md:flex-col max-md:gap-2">
@@ -538,14 +543,47 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
   const s = summary;
   const measured = s ? s.measured_requests > 0 : false;
   const proj = s?.projection;
+  const sav = s?.savings_breakdown;
+  const spend = s?.spend_breakdown ?? {};
+  const savRows: [string, number][] = sav ? [["Route-down", sav.route_down], ["Semantic cache", sav.cache], ["Early abort", sav.early_abort]] : [];
+  const spendRows = Object.entries(spend);
+  const hasBreakdown = (sav && (sav.route_down || sav.cache || sav.early_abort)) || spendRows.length > 0;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-3 gap-3">
-        <Kpi label="Cost saved" value={usd(s?.cost_saved_usd ?? 0)} tone="good" foot="route-down + cache" />
+        <Kpi label="Cost saved" value={usd(s?.cost_saved_usd ?? 0)} tone="good" foot="route-down + cache + abort" />
         <Kpi label="Safety spend" value={usd(s?.safety_spend_usd ?? 0)} foot="checks that ran" />
         <Kpi label="Automated net" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"}
           foot={measured ? `${s?.measured_requests}/${s?.requests} measured on live model` : "self-funding"} />
       </div>
+      {hasBreakdown && (
+        <Card title="How oversight pays for itself" desc="The self-funding loop, itemised: three savings levers on the left recover money that funds the safety checks on the right.">
+          <div className="grid grid-cols-2 gap-6 max-md:grid-cols-1">
+            <div>
+              <div className="mb-2 text-[11px] uppercase tracking-wide text-faint">Savings generated</div>
+              <div className="flex flex-col gap-1.5">
+                {savRows.map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between border-b border-line pb-1.5 text-sm"><span className="text-muted">{k}</span><span className="num text-pass">{usd(v)}</span></div>
+                ))}
+                <div className="flex items-center justify-between pt-1 text-sm font-semibold"><span>Total saved</span><span className="num text-pass">{usd(s?.cost_saved_usd ?? 0)}</span></div>
+              </div>
+            </div>
+            <div>
+              <div className="mb-2 text-[11px] uppercase tracking-wide text-faint">Safety spending</div>
+              <div className="flex flex-col gap-1.5">
+                {spendRows.length ? spendRows.map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between border-b border-line pb-1.5 text-sm"><span className="text-muted">{k.replace(/_/g, " ")}</span><span className="num">{usd(v)}</span></div>
+                )) : <div className="text-sm text-faint">No paid checks ran yet, the free tier cleared everything.</div>}
+                <div className="flex items-center justify-between pt-1 text-sm font-semibold"><span>Total spend</span><span className="num">{usd(s?.safety_spend_usd ?? 0)}</span></div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-dashed border-line-2 bg-bg-2 px-3 py-2 text-sm">
+            <span className="text-muted">Net (spend − saved)</span>
+            <span className={`num font-semibold ${(s?.net_usd ?? 0) < 0 ? "text-pass" : "text-block"}`}>{usd(s?.net_usd ?? 0)} {(s?.net_usd ?? 0) < 0 ? "· self-funding" : ""}</span>
+          </div>
+        </Card>
+      )}
       {proj && (
         <Card title="Projected at enterprise scale" desc={`The same per-request economics at ${proj.weekly_volume.toLocaleString()} requests/week (the brief's reference volume). Sourced list prices, an estimate not a bill.`}>
           <div className="grid grid-cols-3 gap-3">
@@ -878,6 +916,159 @@ function VoIContrastView() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function ReadyBadge() {
+  const [r, setR] = useState<Awaited<ReturnType<typeof api.ready>> | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () => api.ready().then((d) => { if (live) setR(d); }).catch(() => { if (live) setR(null); });
+    load(); const id = setInterval(load, 5000);
+    return () => { live = false; clearInterval(id); };
+  }, []);
+  const ok = r?.ready;
+  const w = r?.warmup;
+  const label = ok ? "ready" : w?.status === "warming" || w?.status === "pending" ? "warming" : r ? "starting" : "offline";
+  const title = r ? `warm-up ${w?.status ?? "unknown"}${w?.elapsed_seconds != null ? ` · ${w.elapsed_seconds}s` : ""} · upstream ${r.upstream}` : "backend unreachable";
+  return (
+    <span className="pill max-md:hidden" title={title}>
+      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-pass" : "bg-escalate"} ${ok ? "" : "animate-pulseglow"}`} />
+      {label}
+    </span>
+  );
+}
+
+const SG_ACTION: Record<string, string> = { emit: "var(--pass)", release: "var(--pass)", hold: "var(--annotate, #d9a221)", abort: "var(--block)" };
+
+function StreamGuardCaseView({ c }: { c: StreamGuardCase }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    setShown(0);
+    let n = 0;
+    const id = setInterval(() => {
+      n += 1; setShown(n);
+      if (n >= c.steps.length) clearInterval(id);
+    }, 420);
+    return () => clearInterval(id);
+  }, [c]);
+  const steps = c.steps.slice(0, shown);
+  const done = shown >= c.steps.length;
+  return (
+    <Card className="flex flex-col" title={c.label}>
+      <div className="mb-2 text-[11px] uppercase tracking-wide text-faint">prompt</div>
+      <div className="mb-3 text-sm text-muted">{c.prompt}</div>
+      <div className="mb-2 text-[11px] uppercase tracking-wide text-faint">tokens leaving the gateway</div>
+      <div className="min-h-[64px] rounded-lg border border-line bg-panel-2 p-3 font-mono text-[13px] leading-relaxed">
+        {steps.filter((s) => s.action === "emit" || s.action === "release").map((s, i) => <span key={i}>{s.text}</span>)}
+        {done && c.aborted && <span className="ml-1 rounded bg-block/20 px-1.5 py-0.5 text-[11px] font-semibold text-block">STREAM ABORTED</span>}
+        {steps.some((s) => s.action === "hold") && !done && <span className="ml-1 animate-pulse text-annotate">▮ buffering…</span>}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {steps.map((s, i) => (
+          <span key={i} className="rounded border px-1.5 py-0.5 font-mono text-[10.5px]" style={{ borderColor: SG_ACTION[s.action], color: SG_ACTION[s.action] }} title={`p_leak=${s.probe}`}>
+            {s.action === "abort" ? "⛔ abort" : s.action === "hold" ? `⏸ ${s.text.trim()}` : s.text.trim()}
+          </span>
+        ))}
+      </div>
+      {done && (
+        <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+          <div><div className="num text-lg font-bold">{c.tokens_emitted}</div><div className="text-[10.5px] text-faint">emitted</div></div>
+          <div><div className="num text-lg font-bold" style={{ color: c.tokens_withheld ? "var(--block)" : undefined }}>{c.tokens_withheld}</div><div className="text-[10.5px] text-faint">withheld</div></div>
+          <div><div className="num text-lg font-bold">{c.final_probe.toFixed(2)}</div><div className="text-[10.5px] text-faint">p_leak</div></div>
+          <div><span className={`badge ${c.aborted ? "badge-block" : "badge-pass"}`}>{c.final_action}</span><div className="mt-0.5 text-[10.5px] text-faint">action</div></div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function StreamGuardView() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.streamGuard>> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(false);
+  const go = async () => { setLoading(true); setErr(false); try { setData(await api.streamGuard()); } catch { setErr(true); } setLoading(false); };
+  useEffect(() => { go(); }, []);
+  return (
+    <div className="flex flex-col gap-4">
+      <Card desc="Softer actions can't be un-sent once streamed, so the streaming guard is the hard, block-level abort: digit-bearing tokens are held in a buffer until the accumulated text proves safe. If the buffered run completes a real identifier (card / SSN / Aadhaar) the response is aborted and the held tokens are never sent. This is predict-and-stop, not judge-after-the-fact.">
+        <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "streaming…" : "Replay StreamGuard"}</button>
+        {err && <div className="mt-3 text-faint">StreamGuard demo unavailable.</div>}
+      </Card>
+      {data && (
+        <>
+          <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+            {data.cases.map((c) => <StreamGuardCaseView key={c.label} c={c} />)}
+          </div>
+          <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
+            <h4 className="mb-1.5 text-[13px] text-accent">Block threshold {data.block_threshold}</h4>{data.note}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const API_BASE_DISPLAY = (process.env.NEXT_PUBLIC_API_BASE || "") || (typeof window !== "undefined" ? window.location.origin : "https://your-tower");
+
+function ApiPanel() {
+  const base = `${API_BASE_DISPLAY.replace(/\/$/, "")}/v1`;
+  const curl = `curl ${base}/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer anything" \\
+  -d '{
+    "model": "openai/gpt-oss-20b",
+    "messages": [{"role": "user", "content": "What is the refund window?"}]
+  }'`;
+  const py = `from openai import OpenAI
+
+client = OpenAI(base_url="${base}", api_key="anything")
+# every response now passes through the value-of-information cascade
+resp = client.chat.completions.create(
+    model="openai/gpt-oss-20b",
+    messages=[{"role": "user", "content": "What is the refund window?"}],
+)`;
+  const endpoints: [string, string, string][] = [
+    ["POST", "/v1/chat/completions", "OpenAI-compatible; every response overseen inline (streaming supported)"],
+    ["GET", "/v1/models", "list available models"],
+    ["POST", "/v1/oversight/playground", "run one prompt through oversight and get the full receipt"],
+    ["GET", "/v1/oversight/summary", "live P&L, action mix, T0 clearance"],
+    ["GET", "/v1/oversight/receipts", "the hash-chained audit trail"],
+    ["GET", "/v1/oversight/benchmark", "public benchmark evidence (Fixed HHEM vs ControlPlane)"],
+    ["GET", "/v1/oversight/voi-contrast", "skip-vs-buy adaptivity proof"],
+    ["GET", "/v1/oversight/compliance.md", "auditor-ready evidence pack"],
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      <Card title="Drop-in, OpenAI-compatible" desc="ControlPlane is a gateway, not just a dashboard. Point any OpenAI client at The Tower; streaming, tools, and your app code keep working, now every response is overseen inline.">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="pill">base_url</span><span className="num text-sm">{base}</span>
+          <button className="btn ml-auto text-xs" onClick={() => { navigator.clipboard?.writeText(base); toast("Copied", base, "ok"); }}>copy</button>
+        </div>
+        <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+          <div>
+            <div className="mb-1 flex items-center gap-2 text-[12px] text-muted">Python<button className="btn ml-auto text-[11px]" onClick={() => { navigator.clipboard?.writeText(py); toast("Copied Python", "", "ok"); }}>copy</button></div>
+            <pre className="code whitespace-pre-wrap text-[12px] leading-relaxed">{py}</pre>
+          </div>
+          <div>
+            <div className="mb-1 flex items-center gap-2 text-[12px] text-muted">curl<button className="btn ml-auto text-[11px]" onClick={() => { navigator.clipboard?.writeText(curl); toast("Copied curl", "", "ok"); }}>copy</button></div>
+            <pre className="code whitespace-pre-wrap text-[12px] leading-relaxed">{curl}</pre>
+          </div>
+        </div>
+      </Card>
+      <Card title="Endpoints" desc="The surface a judge can poke at directly.">
+        <table className="w-full border-collapse text-sm">
+          <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">{["method", "path", "what it returns"].map((h) => <th key={h} className="border-b border-line p-2.5">{h}</th>)}</tr></thead>
+          <tbody>{endpoints.map(([m, p, d]) => (
+            <tr key={p}>
+              <td className="border-b border-line p-2.5"><span className={`badge ${m === "GET" ? "badge-pass" : "badge-annotate"}`}>{m}</span></td>
+              <td className="num border-b border-line p-2.5">{p}</td>
+              <td className="border-b border-line p-2.5 text-xs text-muted">{d}</td>
+            </tr>))}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }

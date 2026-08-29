@@ -24,7 +24,15 @@ export interface Summary {
   projection: { weekly_volume: number; weekly_net_usd: number; annual_net_usd: number; note: string };
   by_action: Partial<Record<Action, number>>; cleared_at_t0_pct: number; scrutiny: number; chain_valid: boolean;
   active_policy: string; policies: Record<string, string>; models: { groundedness: string; pii: string; safety?: string; judge: string };
+  savings_breakdown?: { route_down: number; cache: number; early_abort: number };
+  spend_breakdown?: Record<string, number>;
 }
+export interface StreamGuardStep { text: string; action: "emit" | "hold" | "release" | "abort"; probe: number }
+export interface StreamGuardCase {
+  label: string; prompt: string; response: string; steps: StreamGuardStep[];
+  aborted: boolean; emitted: string; tokens_emitted: number; tokens_withheld: number; final_probe: number; final_action: string;
+}
+export interface StreamGuardDemo { block_threshold: number; note: string; cases: StreamGuardCase[] }
 export interface JobSnapshot {
   id: string; kind: string; status: "running" | "done" | "error"; progress: number; done: number; total: number;
   eta_seconds: number | null; elapsed_seconds: number; message: string; result: any; error: string | null;
@@ -151,4 +159,5 @@ export const api = {
   informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),
   benchmark: () => jget<BenchmarkEval>('/v1/oversight/benchmark'),
   voiContrast: () => jget<VoIContrast>('/v1/oversight/voi-contrast'),
+  streamGuard: () => jget<StreamGuardDemo>('/v1/oversight/streamguard-demo'),
 };

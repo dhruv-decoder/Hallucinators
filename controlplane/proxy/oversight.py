@@ -400,7 +400,7 @@ class OversightService:
             for receipt in self.recorder.receipts[before:]:
                 self._subscribers.publish(receipt)
             # The steps we never ran are money saved -> book into the self-funding ledger.
-            self.ledger.total_cost_saved += rec.wasted_usd
+            self.ledger.book_abort(rec.wasted_usd)
         return rec.model_dump(mode="json")
 
     # -- long-running jobs (progress + ETA) ---------------------------------------------------------
@@ -599,6 +599,11 @@ class OversightService:
             "net_usd": round(totals.net_usd, 6),
             "human_review_usd": round(human_review_usd, 6),
             "self_funding": totals.net_usd < 0,
+            "savings_breakdown": {k: round(v, 6) for k, v in self.ledger.savings_breakdown().items()},
+            "spend_breakdown": {
+                k: round(v, 6)
+                for k, v in sorted(self.ledger.spend_by_check.items(), key=lambda kv: -kv[1])
+            },
             "projection": {
                 "weekly_volume": weekly_volume,
                 "weekly_net_usd": round(per_req_net * weekly_volume, 2),

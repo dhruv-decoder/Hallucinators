@@ -444,6 +444,28 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
         return voi_contrast()
 
+    @app.get("/v1/oversight/streamguard-demo")
+    def streamguard_demo() -> dict:
+        """Replay the real mid-stream abort guard on a safe vs a PII-leaking response.
+
+        Uses the exact hold/abort algorithm the streaming ``/chat/completions`` path uses, but returns the
+        token-by-token decisions as structured data so the UI can play back the leak being stopped before the
+        digits ever leave. Deterministic; no model or key needed.
+        """
+        block = service.policy.block_threshold
+        cases = [
+            {"label": label, "prompt": prompt, "response": text, **_streamguard_trace(text, block)}
+            for label, prompt, text in _STREAMGUARD_CASES
+        ]
+        return {
+            "block_threshold": round(block, 3),
+            "cases": cases,
+            "note": (
+                "Digit-bearing tokens are withheld until the accumulated text proves safe; if the buffered "
+                "run completes a real identifier the response is aborted and the held tokens are never sent."
+            ),
+        }
+
     @app.post("/v1/oversight/replay")
     async def replay(request: Request) -> dict:
         """What-If: re-run the recorded workload under several policies -> residual risk vs net cost."""
@@ -612,6 +634,69 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
 # ---- streaming helpers -----------------------------------------------------------------------------
 _ABORT_PII = RegexPiiDetector()
+
+# Two canned responses for the StreamGuard demo: one clean, one that tries to leak a (Luhn-valid) test card.
+_STREAMGUARD_CASES = [
+    (
+        "Safe response",
+        "What are your support hours and the late fee?",
+        "Support is open 9am to 6pm on weekdays and the late fee is $25.",
+    ),
+    (
+        "PII leak (card number)",
+        "Read back the card you have on file for my account.",
+        "Sure, the card on file is 4539 1488 0343 6467 and it is active.",
+    ),
+]
+
+
+def _streamguard_trace(text: str, block: float) -> dict:
+    """Replay the mid-stream hold/abort guard over ``text`` and return the per-token decisions.
+
+    This mirrors ``_stream_completion`` exactly (kept in sync deliberately) but yields structured steps
+    instead of SSE frames: each token is emitted, held (a risky numeric run buffered), released (the run
+    proved safe), or triggers an abort (the buffer just completed a real identifier -> nothing is sent).
+    """
+    accumulated = ""
+    hold: list[str] = []
+    steps: list[dict] = []
+    emitted: list[str] = []
+    aborted = False
+    probe = 0.0
+    for i, word in enumerate(text.split(" ")):
+        piece = word if i == 0 else " " + word
+        accumulated += piece
+        probe = _ABORT_PII.assess(RequestContext(request_id="streamguard", response=accumulated))[0]
+        if probe >= block:
+            aborted = True
+            steps.append({"text": piece, "action": "abort", "probe": round(probe, 3)})
+            break
+        if any(ch.isdigit() for ch in word):
+            hold.append(piece)
+            steps.append({"text": piece, "action": "hold", "probe": round(probe, 3)})
+        elif hold:
+            hold.append(piece)
+            run = "".join(hold)
+            emitted.append(run)
+            steps.append({"text": run, "action": "release", "probe": round(probe, 3)})
+            hold = []
+        else:
+            emitted.append(piece)
+            steps.append({"text": piece, "action": "emit", "probe": round(probe, 3)})
+    if not aborted and hold:
+        run = "".join(hold)
+        emitted.append(run)
+        steps.append({"text": run, "action": "release", "probe": round(probe, 3)})
+        hold = []
+    return {
+        "steps": steps,
+        "aborted": aborted,
+        "emitted": "".join(emitted),
+        "tokens_emitted": len(emitted),
+        "tokens_withheld": (len(hold) + 1) if aborted else 0,
+        "final_probe": round(probe, 3),
+        "final_action": "block" if aborted else "pass",
+    }
 
 
 def _stream_completion(

@@ -85,6 +85,8 @@ def replay_summary() -> dict:
                 "net_usd": round(r.net_usd, 5),
                 "cost_saved_usd": round(r.cost_saved_usd, 5),
                 "safety_spend_usd": round(r.safety_spend_usd, 5),
+                "human_review_usd": round(r.human_review_usd, 5),
+                "total_cost_usd": round(r.total_cost_usd, 5),
                 "escalation_rate": round(r.escalation_rate, 3),
                 "action_counts": r.action_counts,
                 "self_funding": r.net_usd < 0,

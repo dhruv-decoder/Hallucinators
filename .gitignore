@@ -22,6 +22,11 @@ data/cache/
 *.db
 recorder_log.jsonl
 
+# Local-only deliverables and backups (kept locally, not shared)
+IDEA_PROPOSAL.md
+IDEA_PROPOSAL.pdf
+*.bundle
+
 # OS / editor
 .DS_Store
 .idea/

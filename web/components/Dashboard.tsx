@@ -712,18 +712,25 @@ function Replay() {
   const [rows, setRows] = useState<Scenario[] | null>(null), [loading, setLoading] = useState(false);
   const go = async () => { setLoading(true); try { const d = await api.replay(); setRows(d.scenarios); toast("Replay complete", `${d.scenarios.length} scenarios`, "ok"); } catch (e) { toast("Failed", String(e), "err"); } setLoading(false); };
   return (
-    <Card desc="Oversight-off carries the full risk at zero savings; each ControlPlane policy trades escalations for lower residual risk — and every one is net-negative.">
+    <Card desc="The same workload under three risk appetites. Automated oversight is self-funding in every one (auto net below zero). On top of that you choose how much human review to buy: a stricter appetite escalates more, so it cuts residual risk further but costs more analyst time. That is the over- vs under-flagging tradeoff, priced in dollars.">
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run replay"}</button>
       {rows && (
         <table className="mt-4 w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
-            <th className="border-b border-line p-2.5">scenario</th><th className="border-b border-line p-2.5 text-right">residual risk</th>
-            <th className="border-b border-line p-2.5 text-right">risk ↓</th><th className="border-b border-line p-2.5 text-right">net $</th><th className="border-b border-line p-2.5 text-right">escalations</th></tr></thead>
+            <th className="border-b border-line p-2.5">appetite</th>
+            <th className="border-b border-line p-2.5 text-right">residual risk</th>
+            <th className="border-b border-line p-2.5 text-right">risk cut</th>
+            <th className="border-b border-line p-2.5 text-right">auto net</th>
+            <th className="border-b border-line p-2.5 text-right">human review</th>
+            <th className="border-b border-line p-2.5 text-right">all-in cost</th>
+            <th className="border-b border-line p-2.5 text-right">escalations</th></tr></thead>
           <tbody>{rows.map((s) => (
             <tr key={s.name}><td className="border-b border-line p-2.5">{s.name}{s.self_funding && <span className="badge badge-pass ml-2">self-funding</span>}</td>
-              <td className="num border-b border-line p-2.5 text-right">{s.residual_risk.toFixed(4)}</td>
+              <td className="num border-b border-line p-2.5 text-right">{s.residual_risk.toFixed(3)}</td>
               <td className="num border-b border-line p-2.5 text-right">{s.risk_reduction_pct.toFixed(0)}%</td>
               <td className={`num border-b border-line p-2.5 text-right ${s.net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(s.net_usd)}</td>
+              <td className="num border-b border-line p-2.5 text-right text-muted">{usd(s.human_review_usd)}</td>
+              <td className="num border-b border-line p-2.5 text-right">{usd(s.total_cost_usd)}</td>
               <td className="num border-b border-line p-2.5 text-right">{(s.escalation_rate * 100).toFixed(0)}%</td></tr>))}
           </tbody>
         </table>

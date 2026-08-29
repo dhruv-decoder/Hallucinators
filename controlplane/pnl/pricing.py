@@ -13,6 +13,12 @@ from __future__ import annotations
 class Pricing:
     """Look up model call costs and provide the default cheaper model for route-down."""
 
+    #: Cost of one human-in-the-loop review, booked when a request is escalated. This is an enterprise
+    #: assumption (analyst time), not a provider price: roughly two minutes of a reviewer at a loaded
+    #: ~$45/hr rate. It exists so the risk/cost tradeoff is expressed in real dollars -- a stricter
+    #: appetite escalates more and therefore costs more human time. Tune per organisation.
+    HUMAN_REVIEW_USD: float = 1.50
+
     #: (input, output) USD per 1k tokens. Sourced Aug 2026 -- see docs/EVIDENCE.md.
     DEFAULT_PRICES: dict[str, tuple[float, float]] = {
         # OpenAI
@@ -43,3 +49,7 @@ class Pricing:
         """Cost in USD of a single call. Unknown models fall back to the flagship rate (conservative)."""
         in_price, out_price = self.prices.get(model, self.prices.get("gpt-4o", (0.0025, 0.010)))
         return (input_tokens / 1000.0) * in_price + (output_tokens / 1000.0) * out_price
+
+    def review_cost(self, escalations: int) -> float:
+        """Human-review spend for ``escalations`` requests sent to a person (analyst time)."""
+        return max(escalations, 0) * self.HUMAN_REVIEW_USD

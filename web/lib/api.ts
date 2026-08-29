@@ -28,7 +28,8 @@ export interface JobSnapshot {
   eta_seconds: number | null; elapsed_seconds: number; message: string; result: any; error: string | null;
 }
 export interface Scenario {
-  name: string; residual_risk: number; risk_reduction_pct: number; net_usd: number; escalation_rate: number; self_funding: boolean;
+  name: string; residual_risk: number; risk_reduction_pct: number; net_usd: number;
+  human_review_usd: number; total_cost_usd: number; escalation_rate: number; self_funding: boolean;
 }
 export interface StepVerdict {
   index: number; step_risk: number; cumulative_risk: number; loop_repeat: number; action: string; reason: string; receipt_id: string;

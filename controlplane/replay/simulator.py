@@ -45,6 +45,7 @@ class ScenarioResult(BaseModel):
     residual_risk: float = 0.0  # estimated expected loss of answers that still reach the user
     cost_saved_usd: float = 0.0
     safety_spend_usd: float = 0.0
+    human_review_usd: float = 0.0  # analyst time booked for the escalations this appetite triggers
     added_latency_ms: float = 0.0
 
     @property
@@ -57,7 +58,15 @@ class ScenarioResult(BaseModel):
 
     @property
     def net_usd(self) -> float:
+        """Automated net: safety-check spend minus cost-axis savings. Negative means the automated
+        oversight paid for itself (the self-funding claim). Human review is excluded here on purpose."""
         return self.safety_spend_usd - self.cost_saved_usd
+
+    @property
+    def total_cost_usd(self) -> float:
+        """All-in cost of running this appetite: automated net plus the human-review time it triggers.
+        This is the number that moves with risk appetite -- stricter escalates more and costs more."""
+        return self.net_usd + self.human_review_usd
 
     @property
     def escalation_rate(self) -> float:
@@ -100,6 +109,7 @@ class WhatIfSimulator:
                 residual_risk += result.expected_loss_after
 
         totals = ledger.totals()
+        escalations = action_counts.get(Action.ESCALATE.value, 0) if apply_controls else 0
         return ScenarioResult(
             name=name,
             n_requests=len(self.requests),
@@ -108,6 +118,7 @@ class WhatIfSimulator:
             residual_risk=residual_risk,
             cost_saved_usd=totals.cost_saved_usd if apply_controls else 0.0,
             safety_spend_usd=totals.safety_spend_usd if apply_controls else 0.0,
+            human_review_usd=ledger.pricing.review_cost(escalations),
             added_latency_ms=added_latency if apply_controls else 0.0,
         )
 

@@ -39,7 +39,7 @@ const DIFF = [
 export function Landing({ onLaunch }: { onLaunch: () => void }) {
   const [s, setS] = useState<Summary | null>(null);
   useEffect(() => { api.summary().then(setS).catch(() => {}); }, []);
-  const net = s?.net_usd ?? -0.019;
+  const net = s?.net_usd ?? null;
 
   return (
     <div className="min-h-screen">
@@ -73,13 +73,13 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
         {/* live ticker */}
         <div className="animate-fadeup mx-auto mt-12 grid max-w-[760px] grid-cols-3 gap-px overflow-hidden rounded-xl border border-line bg-line" style={{ animationDelay: ".2s" }}>
           {[
-            ["Oversight P&L", usd(net), net < 0 ? "self-funding" : "this window"],
+            ["Oversight P&L", net == null ? "live" : usd(net), net == null ? "connecting" : net < 0 ? "self-funding" : "this window"],
             ["Added latency p95", "0.16 ms", "measured"],
             ["Caught on real data", "F1 0.76", "HaluEval groundedness"],
           ].map(([k, v, sub]) => (
             <div key={k} className="bg-panel px-5 py-4">
               <div className="text-[11px] uppercase tracking-wide text-faint">{k}</div>
-              <div className="num mt-1 text-2xl font-bold" style={{ color: k === "Oversight P&L" && net < 0 ? "var(--pass)" : "var(--ink)" }}>{v}</div>
+              <div className="num mt-1 text-2xl font-bold" style={{ color: k === "Oversight P&L" && net != null && net < 0 ? "var(--pass)" : "var(--ink)" }}>{v}</div>
               <div className="text-[11px] text-muted">{sub}</div>
             </div>
           ))}

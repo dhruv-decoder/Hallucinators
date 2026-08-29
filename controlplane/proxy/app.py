@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import queue
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -85,6 +86,47 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     upstream = build_upstream(force_simulated=force_simulated)
     service.upstream = upstream  # lets bulk-simulate jobs generate candidates
 
+    # ---- multi-tenant workspaces -------------------------------------------------------------------
+    # Each workspace (use case) gets its own isolated OversightService -- separate policies, audit log, P&L
+    # and cache -- so an enterprise's cases never bleed into each other. Unauthenticated calls fall back to
+    # the shared "guest" service above, so the app (and the tests) keep working without logging in.
+    from controlplane.proxy.auth import AuthStore
+
+    auth_store = AuthStore()
+    _data_dir = Path(os.environ.get("CONTROLPLANE_DATA_DIR", "data")) / "workspaces"
+    _registry: dict[str, OversightService] = {}
+    _registry_lock = threading.Lock()
+
+    def _workspace_service(workspace_id: str) -> OversightService:
+        """Get (or lazily create) the isolated oversight service for a workspace."""
+        with _registry_lock:
+            svc = _registry.get(workspace_id)
+            if svc is None:
+                _data_dir.mkdir(parents=True, exist_ok=True)
+                svc = OversightService(recorder_path=str(_data_dir / f"ws_{workspace_id}.db"))
+                svc.upstream = upstream
+                _registry[workspace_id] = svc
+            return svc
+
+    def _bearer(request: Request) -> str:
+        header = request.headers.get("authorization", "")
+        token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+        # EventSource (the receipt stream) can't send headers, so also accept the token as a query param.
+        return token or request.query_params.get("token", "").strip()
+
+    def resolve_service(request: Request) -> OversightService:
+        """Resolve the OversightService for the caller's active workspace, or the guest service."""
+        workspace_id = (
+            request.headers.get("x-workspace", "").strip()
+            or request.query_params.get("workspace", "").strip()
+        )
+        if not workspace_id:
+            return service
+        user = auth_store.user_for_token(_bearer(request))
+        if user and auth_store.owns_workspace(user.id, workspace_id):
+            return _workspace_service(workspace_id)
+        return service
+
     warmup = ModelWarmup(enabled=env_bool("CONTROLPLANE_WARMUP", False))
 
     @asynccontextmanager
@@ -141,6 +183,63 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     }
     app.state.warmup = warmup
 
+    # ---- auth + workspaces -------------------------------------------------------------------------
+    from controlplane.proxy.auth import AuthError
+
+    def _require_user(request: Request):
+        user = auth_store.user_for_token(_bearer(request))
+        if user is None:
+            raise HTTPException(status_code=401, detail="sign in required")
+        return user
+
+    @app.post("/auth/signup")
+    async def auth_signup(request: Request) -> dict:
+        body = await request.json()
+        try:
+            return auth_store.signup(body.get("email", ""), body.get("password", ""), body.get("name", ""))
+        except AuthError as e:
+            raise HTTPException(status_code=e.status, detail=e.message) from None
+
+    @app.post("/auth/login")
+    async def auth_login(request: Request) -> dict:
+        body = await request.json()
+        try:
+            return auth_store.login(body.get("email", ""), body.get("password", ""))
+        except AuthError as e:
+            raise HTTPException(status_code=e.status, detail=e.message) from None
+
+    @app.get("/auth/me")
+    def auth_me(request: Request) -> dict:
+        user = _require_user(request)
+        return {
+            "user": {"id": user.id, "email": user.email, "name": user.name},
+            "workspaces": auth_store.workspaces(user.id),
+        }
+
+    @app.get("/auth/workspaces")
+    def auth_list_workspaces(request: Request) -> dict:
+        user = _require_user(request)
+        return {"workspaces": auth_store.workspaces(user.id)}
+
+    @app.post("/auth/workspaces")
+    async def auth_create_workspace(request: Request) -> dict:
+        user = _require_user(request)
+        body = await request.json()
+        try:
+            return auth_store.create_workspace(user.id, body.get("name", ""), body.get("use_case", "customer_support"))
+        except AuthError as e:
+            raise HTTPException(status_code=e.status, detail=e.message) from None
+
+    @app.delete("/auth/workspaces/{workspace_id}")
+    def auth_delete_workspace(workspace_id: str, request: Request) -> dict:
+        user = _require_user(request)
+        ok = auth_store.delete_workspace(user.id, workspace_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="workspace not found")
+        with _registry_lock:
+            _registry.pop(workspace_id, None)
+        return {"deleted": True, "workspace_id": workspace_id}
+
     # ---- OpenAI-compatible surface -----------------------------------------------------------------
     @app.get("/v1/models")
     def list_models() -> dict:
@@ -154,6 +253,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
     @app.post("/v1/chat/completions")
     async def chat_completions(req: ChatCompletionRequest, request: Request):
+        service = resolve_service(request)
         request_id = request.headers.get("X-Request-ID") or f"req-{uuid.uuid4().hex[:12]}"
         prompt = req.last_user_prompt()
 
@@ -251,13 +351,15 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
     # ---- Oversight API (for the dashboard) ---------------------------------------------------------
     @app.get("/v1/oversight/observability")
-    def observability() -> dict:
+    def observability(request: Request) -> dict:
+        service = resolve_service(request)
         data = service.runtime.snapshot()
         data["config"] = dict(app.state.runtime_config)
         return data
 
     @app.get("/v1/oversight/receipts/{request_id}/verify")
-    def verify_receipt(request_id: str) -> dict:
+    def verify_receipt(request_id: str, request: Request) -> dict:
+        service = resolve_service(request)
         for r in reversed(service.recorder.receipts):
             if r.request_id == request_id:
                 from controlplane.recorder.receipt import compute_hash
@@ -283,20 +385,23 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         return JSONResponse(payload, status_code=200 if payload["ready"] else 503)
 
     @app.post("/v1/oversight/jobs/runtime-probe")
-    def runtime_probe(n: int = 120, concurrency: int = 16) -> dict:
+    def runtime_probe(request: Request, n: int = 120, concurrency: int = 16) -> dict:
+        service = resolve_service(request)
         return service.start_runtime_probe(n=n, concurrency=concurrency).snapshot()
 
     @app.get("/v1/oversight/summary")
-    def summary() -> dict:
-        return service.summary()
+    def summary(request: Request) -> dict:
+        return resolve_service(request).summary()
 
     @app.get("/v1/oversight/receipts")
-    def receipts(limit: int = 50) -> dict:
+    def receipts(request: Request, limit: int = 50) -> dict:
+        service = resolve_service(request)
         recent = service.recorder.receipts[-limit:][::-1]
         return {"receipts": [r.model_dump(mode="json") for r in recent]}
 
     @app.get("/v1/oversight/receipts/{request_id}")
-    def receipt(request_id: str) -> dict:
+    def receipt(request_id: str, request: Request) -> dict:
+        service = resolve_service(request)
         for r in reversed(service.recorder.receipts):
             if r.request_id == request_id:
                 return r.model_dump(mode="json")
@@ -305,11 +410,12 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     @app.get("/v1/oversight/stream")
     async def stream(request: Request):
         return StreamingResponse(
-            _receipt_events(service, request), media_type="text/event-stream"
+            _receipt_events(resolve_service(request), request), media_type="text/event-stream"
         )
 
     @app.post("/v1/oversight/policy")
     async def set_policy(request: Request) -> dict:
+        service = resolve_service(request)
         body = await request.json()
         key = body.get("policy")
         try:
@@ -321,6 +427,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
     @app.post("/v1/oversight/policy/generate")
     async def generate_policy(request: Request) -> dict:
         """Generate a tuned oversight policy + projection from a use-case spec; ?apply=1 activates it live."""
+        service = resolve_service(request)
         body = await request.json()
         apply = str(body.pop("apply", request.query_params.get("apply", "0"))).lower() in ("1", "true", "yes")
         return service.generate_policy(body, apply=apply)
@@ -330,6 +437,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         """Oversee a REAL model response to an arbitrary prompt (+ optional context) -- the live 'try it' path."""
         from controlplane.proxy.upstream import GroqUpstream
 
+        service = resolve_service(request)
         body = await request.json()
         prompt = (body.get("prompt") or "").strip()
         context = (body.get("context") or "").strip() or None
@@ -412,17 +520,18 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         }
 
     @app.post("/v1/oversight/reset")
-    def reset_demo() -> dict:
+    def reset_demo(request: Request) -> dict:
         """Clear demo state (audit log, P&L, cache, generated policies) back to a clean slate."""
-        return service.reset()
+        return resolve_service(request).reset()
 
     @app.post("/v1/oversight/simulate")
-    async def simulate() -> dict:
+    async def simulate(request: Request) -> dict:
         """Fire the scripted demo workload through the real pipeline (the UI's 'Send demo traffic' button).
 
         Goes through the same real route-down + cache-bypass path as /chat/completions, so the demo P&L is
         backed by genuine upstream-call reduction (upstream_calls stays flat on the repeated prompt).
         """
+        service = resolve_service(request)
         from controlplane.proxy.workload import demo_prompts
 
         produced = []
@@ -450,14 +559,14 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         return voi_contrast()
 
     @app.get("/v1/oversight/streamguard-demo")
-    def streamguard_demo() -> dict:
+    def streamguard_demo(request: Request) -> dict:
         """Replay the real mid-stream abort guard on a safe vs a PII-leaking response.
 
         Uses the exact hold/abort algorithm the streaming ``/chat/completions`` path uses, but returns the
         token-by-token decisions as structured data so the UI can play back the leak being stopped before the
         digits ever leave. Deterministic; no model or key needed.
         """
-        block = service.policy.block_threshold
+        block = resolve_service(request).policy.block_threshold
         cases = [
             {"label": label, "prompt": prompt, "response": text, **_streamguard_trace(text, block)}
             for label, prompt, text in _STREAMGUARD_CASES
@@ -479,9 +588,9 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         return await asyncio.to_thread(replay_summary)
 
     @app.post("/v1/oversight/agent-demo")
-    async def agent_demo() -> dict:
+    async def agent_demo(request: Request) -> dict:
         """Run the compounding-hallucination agent trajectory under the trajectory auditor."""
-        return await asyncio.to_thread(service.run_agent_demo)
+        return await asyncio.to_thread(resolve_service(request).run_agent_demo)
 
     @app.post("/v1/oversight/override")
     async def override(request: Request) -> dict:
@@ -489,6 +598,7 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
 
         Body: ``{"request_id": "...", "is_failure": true|false, "axis": "performance"|"responsibility"}``.
         """
+        service = resolve_service(request)
         body = await request.json()
         request_id = (body.get("request_id") or "").strip()
         if not request_id:
@@ -501,25 +611,27 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             raise HTTPException(status_code=404, detail="unknown or expired request_id") from None
 
     @app.post("/v1/oversight/jobs/benchmark")
-    def start_benchmark(n: int = 2000, weekly_volume: int = 50_000) -> dict:
+    def start_benchmark(request: Request, n: int = 2000, weekly_volume: int = 50_000) -> dict:
         """Start the latency/throughput benchmark; poll GET /v1/oversight/jobs/{id} for progress + result."""
-        return service.start_benchmark(n=n, weekly_volume=weekly_volume).snapshot()
+        return resolve_service(request).start_benchmark(n=n, weekly_volume=weekly_volume).snapshot()
 
     @app.post("/v1/oversight/jobs/simulate")
-    def start_bulk_simulate(n: int = 40) -> dict:
+    def start_bulk_simulate(request: Request, n: int = 40) -> dict:
         """Start a large simulated workload through the real pipeline (feeds the live feed + P&L)."""
-        return service.start_bulk_simulate(n=n).snapshot()
+        return resolve_service(request).start_bulk_simulate(n=n).snapshot()
 
     @app.get("/v1/oversight/jobs/{job_id}")
-    def get_job(job_id: str) -> dict:
+    def get_job(job_id: str, request: Request) -> dict:
+        service = resolve_service(request)
         job = service.jobs.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
         return job.snapshot()
 
     @app.get("/v1/oversight/cache")
-    def cache_status() -> dict:
+    def cache_status(request: Request) -> dict:
         """Expose bounded semantic-cache configuration and measured hit/miss counters."""
+        service = resolve_service(request)
         return {
             **service.semantic_cache.stats(),
             "upstream_calls": service.upstream_calls,
@@ -530,9 +642,9 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         }
 
     @app.get("/v1/oversight/informativeness")
-    def informativeness() -> dict:
+    def informativeness(request: Request) -> dict:
         """Return the empirical-eta artifact status and values currently used by the runtime."""
-        return service.informativeness_status()
+        return resolve_service(request).informativeness_status()
 
     @app.get("/v1/oversight/conformal")
     def conformal() -> dict:
@@ -588,19 +700,21 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         return data
 
     @app.get("/v1/oversight/compliance")
-    def compliance() -> dict:
+    def compliance(request: Request) -> dict:
         """Map the recorded receipts to EU AI Act / ISO 42001 / NIST AI RMF controls (JSON)."""
         from controlplane.compliance import generate_pack
 
+        service = resolve_service(request)
         return generate_pack(
             service.recorder.receipts, service.recorder.verify_chain(), policy_id=service.policy.id
         )
 
     @app.get("/v1/oversight/compliance.md")
-    def compliance_md() -> PlainTextResponse:
+    def compliance_md(request: Request) -> PlainTextResponse:
         """The same evidence pack rendered as a downloadable Markdown document."""
         from controlplane.compliance import generate_pack, render_markdown
 
+        service = resolve_service(request)
         pack = generate_pack(
             service.recorder.receipts, service.recorder.verify_chain(), policy_id=service.policy.id
         )

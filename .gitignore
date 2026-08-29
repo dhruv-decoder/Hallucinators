@@ -37,3 +37,7 @@ DEMO_AND_UI_MAP.md
 node_modules/
 ui/.next/
 ui/out/
+
+# auth + per-workspace stores
+controlplane_auth.db
+data/

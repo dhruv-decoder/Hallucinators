@@ -2,7 +2,9 @@
 // In dev, calls go to /api/* which next.config rewrites to the backend (no CORS hop). In prod, set
 // NEXT_PUBLIC_API_BASE to the deployed backend origin (CORS is enabled server-side).
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "/api";
+import { API_BASE } from "./config";
+import { authHeaders, streamAuthParams } from "./auth";
+export { API_BASE };
 
 export type Axis = "performance" | "cost" | "responsibility";
 export type Action = "pass" | "annotate" | "auto_repair" | "escalate" | "block";
@@ -111,13 +113,17 @@ export interface GeneratedPolicy {
   rationale: string[]; recommended_detectors: string[]; compliance: string[];
 }
 
+// Every call carries the caller's workspace headers so the backend routes it to the right isolated service.
+function jheaders(extra?: Record<string, string>): Record<string, string> {
+  return { ...authHeaders(), ...(extra ?? {}) };
+}
 async function jget<T>(path: string): Promise<T> {
-  const r = await fetch(`${API_BASE}${path}`);
+  const r = await fetch(`${API_BASE}${path}`, { headers: jheaders() });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 }
 async function jpost<T>(path: string): Promise<T> {
-  const r = await fetch(`${API_BASE}${path}`, { method: "POST" });
+  const r = await fetch(`${API_BASE}${path}`, { method: "POST", headers: jheaders() });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 }
@@ -130,31 +136,31 @@ export const api = {
   reset: () => jpost<{ reset: boolean; cleared_receipts: number; dropped_policies: string[] }>("/v1/oversight/reset"),
   setPolicy: (policy: string) =>
     fetch(`${API_BASE}/v1/oversight/policy`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ policy }),
+      method: "POST", headers: jheaders({ "content-type": "application/json" }), body: JSON.stringify({ policy }),
     }).then((r) => r.json()),
   replay: () => jpost<{ scenarios: Scenario[] }>("/v1/oversight/replay"),
   agentDemo: () => jpost<AgentReceipt>("/v1/oversight/agent-demo"),
   compliance: () => jget<{ decisions: number; controls: ControlRow[] }>("/v1/oversight/compliance"),
   playground: (body: { prompt: string; context?: string; model?: string; use_case?: string }) =>
     fetch(`${API_BASE}/v1/oversight/playground`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      method: "POST", headers: jheaders({ "content-type": "application/json" }), body: JSON.stringify(body),
     }).then((r) => r.json() as Promise<PlaygroundResult>),
   conformal: () => jget<{ axis: string; source?: string; risk_definition?: string; assumption?: string; certificates: { alpha: number; valid: boolean; tau: number; empirical_fnr: number; risk_bound: number; n_failures: number; holdout_fnr?: number | null; statement: string }[] }>("/v1/oversight/conformal"),
   generatePolicy: (spec: UseCaseSpec, apply = false) =>
     fetch(`${API_BASE}/v1/oversight/policy/generate?apply=${apply ? 1 : 0}`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(spec),
+      method: "POST", headers: jheaders({ "content-type": "application/json" }), body: JSON.stringify(spec),
     }).then((r) => r.json() as Promise<GeneratedPolicy>),
   startBenchmark: (n: number, weekly: number) =>
     jpost<JobSnapshot>(`/v1/oversight/jobs/benchmark?n=${n}&weekly_volume=${weekly}`),
   job: (id: string) => jget<JobSnapshot>(`/v1/oversight/jobs/${id}`),
-  streamUrl: () => `${API_BASE}/v1/oversight/stream`,
+  streamUrl: () => `${API_BASE}/v1/oversight/stream${streamAuthParams()}`,
   observability: () => jget<RuntimeObservability>('/v1/oversight/observability'),
   ready: () => jget<{ ready: boolean; upstream: string; policy_loaded: boolean; recorder: boolean; warmup: WarmupStatus }>('/readyz'),
   runtimeProbe: (n = 120, concurrency = 16) => jpost<JobSnapshot>(`/v1/oversight/jobs/runtime-probe?n=${n}&concurrency=${concurrency}`),
   verifyReceipt: (id: string) => jget<{ request_id: string; receipt_valid: boolean; chain_valid: boolean; hash_self: string; hash_prev: string }>(`/v1/oversight/receipts/${encodeURIComponent(id)}/verify`),
   override: (request_id: string, is_failure: boolean, axis = "performance") =>
     fetch(`${API_BASE}/v1/oversight/override`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request_id, is_failure, axis }),
+      method: "POST", headers: jheaders({ "content-type": "application/json" }), body: JSON.stringify({ request_id, is_failure, axis }),
     }).then((r) => r.json() as Promise<{ recorded: boolean; detectors_refit: string[]; feedback_counts: Record<string, number>; threshold: number }>),
   cache: () => jget<CacheStatus>('/v1/oversight/cache'),
   informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),

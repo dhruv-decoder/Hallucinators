@@ -1,10 +1,11 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Activity, BarChart3, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Info, LayoutGrid, LifeBuoy, MousePointerClick,
-  Play, Radio, RotateCcw, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
+  Activity, BarChart3, Boxes, Check, ChevronsUpDown, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Info, LayoutGrid, LifeBuoy, LogOut, MousePointerClick,
+  Play, Plus, Radio, RotateCcw, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
 import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, StreamGuardCase, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
+import { createWorkspace, logout, setWorkspace, useAuth } from "@/lib/auth";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, Card, EmptyState, Kpi, ProgressBar, toast, Toaster } from "./ui";
 import { QuadrantChart, Sparkline } from "./charts";
@@ -145,6 +146,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             <div className="text-xs text-faint">{TITLES[view][1]}</div>
           </div>
           <span className="flex-1" />
+          <WorkspaceMenu />
           <ReadyBadge />
           <span className="pill max-md:hidden" title="Which detectors are model-backed vs heuristic">
             models <b className="text-ink">{summary?.models?.groundedness ?? "-"} · judge:{summary?.models?.judge ?? "off"}</b>
@@ -932,6 +934,65 @@ function VoIContrastView() {
           </div>
           <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
             <h4 className="mb-1.5 text-[13px] text-accent">Same policy · {data.policy_id}</h4>{data.note}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceMenu() {
+  const auth = useAuth();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [useCase, setUseCase] = useState("customer_support");
+  const active = auth.workspaces.find((w) => w.id === auth.workspace);
+  const label = auth.guest ? "Guest sandbox" : (active?.name ?? "Select workspace");
+  const create = async () => {
+    if (!name.trim()) return;
+    try { await createWorkspace(name.trim(), useCase); toast("Workspace created", name, "ok"); setCreating(false); setName(""); setOpen(false); }
+    catch (e) { toast("Failed", String(e), "err"); }
+  };
+  return (
+    <div className="relative max-md:hidden">
+      <button className="btn inline-flex items-center gap-2" onClick={() => setOpen((o) => !o)} title="Switch workspace, each is isolated">
+        <Boxes size={14} style={{ color: "var(--accent)" }} /><span className="max-w-[150px] truncate">{label}</span><ChevronsUpDown size={13} className="text-faint" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-40 mt-1.5 w-[288px] rounded-xl border border-line bg-panel p-2" style={{ boxShadow: "var(--shadow)" }}>
+            {auth.guest ? (
+              <div className="p-2 text-[13px] text-muted">You&rsquo;re in the shared guest sandbox.
+                <button className="btn-primary mt-2 w-full" onClick={() => { logout(); }}>Sign in to separate your cases</button></div>
+            ) : (
+              <>
+                <div className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-wider text-faint">Workspaces, isolated per case</div>
+                <div className="max-h-[220px] overflow-auto">
+                  {auth.workspaces.map((w) => (
+                    <button key={w.id} onClick={() => { setWorkspace(w.id); setOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-panel-2">
+                      <Boxes size={14} className="flex-none text-faint" />
+                      <span className="min-w-0 flex-1 truncate">{w.name}<span className="block text-[11px] text-faint">{w.use_case.replace(/_/g, " ")}</span></span>
+                      {w.id === auth.workspace && <Check size={14} className="flex-none text-pass" />}
+                    </button>
+                  ))}
+                </div>
+                {creating ? (
+                  <div className="mt-1 border-t border-line p-2">
+                    <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Workspace name" className="mb-2 w-full rounded-lg border border-line bg-bg-2 p-2 text-sm outline-none focus:border-accent" />
+                    <select className="btn mb-2 w-full" value={useCase} onChange={(e) => setUseCase(e.target.value)}>{["customer_support", "internal_copilot", "decision_support", "agentic"].map((u) => <option key={u} value={u}>{u.replace(/_/g, " ")}</option>)}</select>
+                    <div className="flex gap-2"><button className="btn-primary flex-1" onClick={create}>Create</button><button className="btn" onClick={() => setCreating(false)}>Cancel</button></div>
+                  </div>
+                ) : (
+                  <button className="mt-1 flex w-full items-center gap-2 border-t border-line px-2 py-2 text-sm text-muted transition hover:text-ink" onClick={() => setCreating(true)}><Plus size={14} /> New workspace</button>
+                )}
+                <div className="mt-1 flex items-center justify-between border-t border-line px-2 pt-2 text-[12px]">
+                  <span className="min-w-0 flex-1 truncate text-faint">{auth.user?.email}</span>
+                  <button className="ml-2 inline-flex flex-none items-center gap-1 text-muted transition hover:text-block" onClick={() => { logout(); }}><LogOut size={13} /> Sign out</button>
+                </div>
+              </>
+            )}
           </div>
         </>
       )}

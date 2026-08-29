@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ControlPlane · The Tower",
-  description: "Real-time AI oversight as a value-of-information decision under a latency budget — safer AND cheaper.",
+  description: "Real-time AI oversight as a value-of-information decision under a latency budget, safer AND cheaper.",
 };
 
 // Set the saved theme before paint to avoid a flash of the wrong theme.

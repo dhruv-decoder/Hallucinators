@@ -19,8 +19,8 @@ function Logo() {
 }
 
 const AXES = [
-  { c: "var(--annotate)", t: "Performance", d: "Is it wrong — or confidently wrong? Groundedness vs. source, self-consistency, and a model judge on the uncertain tail." },
-  { c: "var(--pass)", t: "Cost", d: "Is there a cheaper path to the same quality? Route-downs and cache hits — the savings that fund the safety checks." },
+  { c: "var(--annotate)", t: "Performance", d: "Is it wrong, or confidently wrong? Groundedness vs. source, self-consistency, and a model judge on the uncertain tail." },
+  { c: "var(--pass)", t: "Cost", d: "Is there a cheaper path to the same quality? Route-downs and cache hits, the savings that fund the safety checks." },
   { c: "var(--block)", t: "Responsibility", d: "Is it unsafe or leaking data? PII, prompt-injection and unsafe-content gates, redacted or blocked before it ships." },
 ];
 const PROOF = [
@@ -30,9 +30,9 @@ const PROOF = [
   { k: "Oversight P&L", v: "net-negative", s: "savings outweigh safety spend" },
 ];
 const DIFF = [
-  { icon: CircleDollarSign, t: "Self-funding P&L", d: "Cost-axis savings (real cache-bypass + route-down) offset the safety checks — a live ledger. A demonstrated mechanism; measured on the real-model path, counterfactual portions labelled as such." },
+  { icon: CircleDollarSign, t: "Self-funding P&L", d: "Cost-axis savings (real cache-bypass + route-down) offset the safety checks, a live ledger. A demonstrated mechanism; measured on the real-model path, counterfactual portions labelled as such." },
   { icon: Workflow, t: "Agentic oversight", d: "Extends to multi-step agents: catches compounding hallucinations and loops, aborting mid-run before the wrong answer ships." },
-  { icon: FileCheck2, t: "Compliance pack", d: "Every decision maps to EU AI Act / ISO 42001 / NIST AI RMF controls — auditor-ready evidence, generated on demand." },
+  { icon: FileCheck2, t: "Compliance pack", d: "Every decision maps to EU AI Act / ISO 42001 / NIST AI RMF controls, auditor-ready evidence, generated on demand." },
   { icon: GitBranch, t: "Tamper-evident receipts", d: "A hash-chained flight recorder: every verdict is auditable, with the value-of-information math behind it." },
 ];
 
@@ -63,7 +63,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
           Oversight that<br /><span style={{ color: "var(--accent)" }}>pays for itself.</span>
         </h1>
         <p className="animate-fadeup mx-auto mt-5 max-w-[620px] text-lg text-muted" style={{ animationDelay: ".1s" }}>
-          A layer in front of any model that decides, per response, <b className="text-ink">how much verification it&rsquo;s worth</b> —
+          A layer in front of any model that decides, per response, <b className="text-ink">how much verification it&rsquo;s worth</b>,
           buying the cheapest signal first and letting cost savings fund the safety checks. One verdict across performance, cost, and responsibility.
         </p>
         <div className="animate-fadeup mt-8 flex items-center justify-center gap-3" style={{ animationDelay: ".15s" }}>
@@ -89,7 +89,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
       {/* three axes */}
       <section className="mx-auto max-w-[1080px] px-6 py-16">
         <h2 className="text-center text-3xl font-semibold tracking-tight">One layer, three coupled risks, one verdict</h2>
-        <p className="mx-auto mt-3 max-w-[560px] text-center text-muted">Not three separate tools shouting different things — a single economic decision across all three.</p>
+        <p className="mx-auto mt-3 max-w-[560px] text-center text-muted">Not three separate tools shouting different things, a single economic decision across all three.</p>
         <div className="mt-10 grid grid-cols-3 gap-4 max-md:grid-cols-1">
           {AXES.map((a) => (
             <div key={a.t} className="card">
@@ -108,7 +108,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
         <div className="mx-auto max-w-[1080px] px-6 py-16">
           <div className="mb-8 flex items-end justify-between gap-4 max-sm:flex-col max-sm:items-start">
             <div><h2 className="text-3xl font-semibold tracking-tight">Measured, not asserted</h2>
-              <p className="mt-2 max-w-[540px] text-muted">Every number is reproducible from the repo — real public benchmarks and a real latency test, not slideware.</p></div>
+              <p className="mt-2 max-w-[540px] text-muted">Every number is reproducible from the repo, real public benchmarks and a real latency test, not slideware.</p></div>
             <span className="pill"><Gauge size={13} /> reproducible via <span className="num">make eval-real</span></span>
           </div>
           <div className="grid grid-cols-4 gap-4 max-lg:grid-cols-2">
@@ -129,10 +129,10 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
         <p className="mx-auto mt-3 max-w-[600px] text-center text-muted">Only pay for a check when it could change the decision. Most responses clear instantly; the costly checks and humans are reserved for the uncertain, high-stakes tail.</p>
         <div className="mt-10 grid grid-cols-4 gap-3 max-lg:grid-cols-2">
           {[
-            { n: "T0", t: "Free heuristics", d: "Overconfidence, lexical groundedness, PII/injection — microseconds, on every response." },
-            { n: "T1", t: "Cheap models", d: "HHEM-2.1 groundedness, self-consistency — run only if the value beats the cost." },
+            { n: "T0", t: "Free heuristics", d: "Overconfidence, lexical groundedness, PII/injection, microseconds, on every response." },
+            { n: "T1", t: "Cheap models", d: "HHEM-2.1 groundedness, self-consistency, run only if the value beats the cost." },
             { n: "T2", t: "LLM judge", d: "A strong model verifies the ~1–3% still uncertain. Bought, not blanket-applied." },
-            { n: "Act", t: "Pass · repair · escalate · block", d: "Auto-repair from source, redact/block leaks, or route to a human — with a receipt." },
+            { n: "Act", t: "Pass · repair · escalate · block", d: "Auto-repair from source, redact/block leaks, or route to a human, with a receipt." },
           ].map((step, i) => (
             <div key={step.n} className="card relative">
               <div className="num mb-2 inline-flex items-center gap-2 text-xs font-semibold" style={{ color: "var(--accent)" }}>{step.n}
@@ -150,7 +150,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
           <div>
             <span className="pill mb-3"><Zap size={13} /> drop-in</span>
             <h2 className="text-2xl font-semibold tracking-tight">Swap one line. Nothing else changes.</h2>
-            <p className="mt-2 text-muted">Point any OpenAI-compatible client at The Tower. Streaming, tools, and your app code all keep working — now every response is overseen inline.</p>
+            <p className="mt-2 text-muted">Point any OpenAI-compatible client at The Tower. Streaming, tools, and your app code all keep working, now every response is overseen inline.</p>
           </div>
           <pre className="code text-[13px] leading-relaxed">{`from openai import OpenAI
 
@@ -180,13 +180,13 @@ client = OpenAI(
         <div className="card flex flex-col items-center gap-4 py-14 text-center" style={{ background: "radial-gradient(600px 200px at 50% 0%, var(--accent-dim), var(--grad-1))" }}>
           <ShieldCheck size={30} style={{ color: "var(--accent)" }} />
           <h2 className="text-3xl font-semibold tracking-tight">See it run live</h2>
-          <p className="max-w-[520px] text-muted">Send demo traffic, watch the P&L go negative, benchmark the latency, and stop a looping agent — all in the browser.</p>
+          <p className="max-w-[520px] text-muted">Send demo traffic, watch the P&L go negative, benchmark the latency, and stop a looping agent, all in the browser.</p>
           <button className="btn-primary inline-flex items-center gap-1.5 px-5 py-2.5 text-[15px]" onClick={onLaunch}>Launch the Control Tower <ArrowRight size={16} /></button>
         </div>
       </section>
 
       <footer className="border-t border-line px-6 py-8 text-center text-sm text-faint">
-        ControlPlane · The Tower — Team Hallucinators · Accenture Innovation Challenge 2026
+        ControlPlane · The Tower, Team Hallucinators · Accenture Innovation Challenge 2026
       </footer>
     </div>
   );

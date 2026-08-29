@@ -9,7 +9,7 @@ export const usd = (n: number) =>
   (n < 0 ? "-$" : "$") + Math.abs(n).toFixed(n !== 0 && Math.abs(n) < 0.01 ? 5 : 2);
 
 export const fmtEta = (s: number | null) =>
-  s == null ? "—" : s < 1 ? "<1s" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+  s == null ? "-" : s < 1 ? "<1s" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 
 export function worstAxis(r: Receipt): [Axis | null, number] {
   let a: Axis | null = null, p = -1;

@@ -27,16 +27,16 @@ const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] 
     { id: "help", label: "Getting started", icon: LifeBuoy } ] },
 ];
 const TITLES: Record<View, [string, string]> = {
-  playground: ["Playground", "Type any prompt — a real model answers and ControlPlane oversees the response live"],
-  guarantee: ["Risk guarantee", "Not just a score — a certificate: the escaped-failure rate stays below your target"],
-  configure: ["Configure for your use case", "Tune oversight to your traffic, latency, risk, and data — the policy is generated for you"],
-  overview: ["Overview", "One verdict across performance, cost, and responsibility — in real time"],
-  feed: ["Live feed", "Every decision, as it happens — the audit trail behind each response"],
+  playground: ["Playground", "Type any prompt, a real model answers and ControlPlane oversees the response live"],
+  guarantee: ["Risk guarantee", "Not just a score, a certificate: the escaped-failure rate stays below your target"],
+  configure: ["Configure for your use case", "Tune oversight to your traffic, latency, risk, and data, the policy is generated for you"],
+  overview: ["Overview", "One verdict across performance, cost, and responsibility, in real time"],
+  feed: ["Live feed", "Every decision, as it happens, the audit trail behind each response"],
   quadrant: ["Confidently-wrong map", "The danger zone we exist to catch: sure of itself and wrong"],
-  pnl: ["Oversight P&L", "Safer AND cheaper — a negative price tag, measured not asserted"],
+  pnl: ["Oversight P&L", "Safer AND cheaper, a negative price tag, measured not asserted"],
   benchmark: ["Latency & scale", "Does oversight slow the model down? Measure it."],
   runtime: ["Runtime health", "Live service telemetry, saturation protection, and detector cost"],
-  replay: ["What-If replay", "Re-run the same workload under different risk appetites — the proof engine"],
+  replay: ["What-If replay", "Re-run the same workload under different risk appetites, the proof engine"],
   agents: ["Agent oversight", "Catching compounding risk across a multi-step agent"],
   compliance: ["Compliance", "Receipts → EU AI Act / ISO 42001 / NIST AI RMF evidence"],
   detectors: ["Detectors & models", "The tiered stack: cheap first, model on the tail"],
@@ -116,7 +116,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
         <div className="flex-1" />
         <div className="border-t border-line px-3 py-2.5 text-[11px] text-faint max-lg:hidden">
           <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${summary?.chain_valid ? "bg-pass" : "bg-block"}`} />
-          chain {summary?.chain_valid ? "verified" : "—"} · {summary?.requests ?? 0} decisions
+          chain {summary?.chain_valid ? "verified" : "-"} · {summary?.requests ?? 0} decisions
         </div>
       </aside>
 
@@ -129,7 +129,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
           </div>
           <span className="flex-1" />
           <span className="pill max-md:hidden" title="Which detectors are model-backed vs heuristic">
-            models <b className="text-ink">{summary?.models?.groundedness ?? "—"} · judge:{summary?.models?.judge ?? "off"}</b>
+            models <b className="text-ink">{summary?.models?.groundedness ?? "-"} · judge:{summary?.models?.judge ?? "off"}</b>
           </span>
           <ThemeToggle />
           {summary && (
@@ -163,8 +163,8 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             {view === "help" && <Help />}
           </div>
           <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-xs text-faint max-md:flex-col max-md:gap-2">
-            <span>ControlPlane · The Tower — value-of-information oversight</span>
-            <span>{summary?.requests ?? 0} decisions · chain {summary?.chain_valid ? "verified" : "—"} · {summary?.models?.judge && summary.models.judge !== "disabled" ? `judge:${summary.models.judge}` : "heuristics"}</span>
+            <span>ControlPlane · The Tower, value-of-information oversight</span>
+            <span>{summary?.requests ?? 0} decisions · chain {summary?.chain_valid ? "verified" : "-"} · {summary?.models?.judge && summary.models.judge !== "disabled" ? `judge:${summary.models.judge}` : "heuristics"}</span>
           </footer>
         </main>
       </div>
@@ -182,7 +182,7 @@ function FeedRow({ r, onOpen }: { r: Receipt; onOpen: (r: Receipt) => void }) {
     <div onClick={() => onOpen(r)} className="grid cursor-pointer grid-cols-[86px_1fr_auto] items-center gap-3 rounded-[10px] border border-line bg-panel-2 px-3 py-2.5 transition hover:translate-x-0.5 hover:border-accent">
       <Badge action={r.action} />
       <div className="min-w-0">
-        <div className="truncate">{(r.use_case || "").replace("_", " ")} · {ax || "—"} <span className="num">{p.toFixed(2)}</span></div>
+        <div className="truncate">{(r.use_case || "").replace("_", " ")} · {ax || "-"} <span className="num">{p.toFixed(2)}</span></div>
         <div className="truncate font-mono text-[11px] text-faint">{r.request_id} · {r.stopping_reason}</div>
       </div>
       <div className={`num text-xs ${r.pnl.net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(r.pnl.net_usd)}</div>
@@ -215,7 +215,7 @@ function Playground({ policies, onDecision, onOpen }: { policies?: Record<string
   const cp = res?.controlplane;
   return (
     <div className="grid grid-cols-[minmax(360px,460px)_1fr] gap-4 max-lg:grid-cols-1">
-      <Card title="Send a prompt to a real model" desc="A live model answers, then ControlPlane oversees the response — pass, annotate, repair, escalate, or block.">
+      <Card title="Send a prompt to a real model" desc="A live model answers, then ControlPlane oversees the response, pass, annotate, repair, escalate, or block.">
         <div className="mb-2 flex flex-wrap gap-1.5">
           {PG_EXAMPLES.map(([label, p, c]) => (
             <button key={label} className="rounded-md border border-line px-2 py-1 text-[11px] text-muted transition hover:border-accent hover:text-accent" onClick={() => { setPrompt(p); setContext(c ?? ""); }}>{label}</button>
@@ -257,7 +257,7 @@ function Playground({ policies, onDecision, onOpen }: { policies?: Record<string
         </div>
       ) : (
         <div className="flex items-center justify-center rounded-xl border border-dashed border-line text-center">
-          <div className="p-10 text-faint"><FlaskConical className="mx-auto mb-2" /> Send a prompt (try the chips above) to watch a real model answer get overseen — pass, repaired, escalated, or blocked.</div>
+          <div className="p-10 text-faint"><FlaskConical className="mx-auto mb-2" /> Send a prompt (try the chips above) to watch a real model answer get overseen, pass, repaired, escalated, or blocked.</div>
         </div>
       )}
     </div>
@@ -270,7 +270,7 @@ function Guarantee() {
   useEffect(() => { api.conformal().then(setData).catch(() => setErr(true)); }, []);
   return (
     <div className="flex flex-col gap-4">
-      <Card title="Conformal risk control — a certificate on the escaped-failure rate"
+      <Card title="Conformal risk control, a certificate on the escaped-failure rate"
         desc="For a target α, conformal risk control chooses a threshold whose expected conditional false-negative rate on future failures is bounded by α under exchangeability. This is a finite-sample risk guarantee, not a claim of distribution-shift robustness.">
         {err ? <div className="text-faint">Guarantee unavailable.</div> : !data ? <div className="text-faint">Calibrating…</div> : (
           <table className="w-full border-collapse text-sm">
@@ -281,9 +281,9 @@ function Guarantee() {
             <tbody>{data.certificates.map((c) => (
               <tr key={c.alpha}><td className="num border-b border-line p-2.5">{c.alpha.toFixed(2)}</td>
                 <td className="border-b border-line p-2.5">{c.valid ? <span className="badge badge-pass">≤ {c.alpha.toFixed(2)} certified</span> : <span className="badge badge-escalate">insufficient data</span>}</td>
-                <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.tau.toFixed(3) : "—"}</td>
-                <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.empirical_fnr.toFixed(3) : "—"}</td>
-                <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.risk_bound.toFixed(3) : "—"}</td>
+                <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.tau.toFixed(3) : "-"}</td>
+                <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.empirical_fnr.toFixed(3) : "-"}</td>
+                <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.risk_bound.toFixed(3) : "-"}</td>
                 <td className="num border-b border-line p-2.5 text-right">{c.n_failures}</td></tr>))}
             </tbody>
           </table>
@@ -292,7 +292,7 @@ function Guarantee() {
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
         {data?.source && <div className="mb-2 text-[11px] text-faint">Certificate source: <span className="num text-muted">{data.source}</span></div>}
         <h4 className="mb-2 text-[13px] text-accent">Why this wins the room</h4>
-        “We don’t just <i>score</i> risk — we <b className="text-ink">control</b> it.” Turning a tuned threshold into a risk budget with a finite-sample certificate is something no guardrail/observability product ships. With more labelled calibration data (real benchmarks), the bound tightens. Honest by design: when there are too few labelled failures to certify a tight α, it says so.
+        “We don’t just <i>score</i> risk, we <b className="text-ink">control</b> it.” Turning a tuned threshold into a risk budget with a finite-sample certificate is something no guardrail/observability product ships. With more labelled calibration data (real benchmarks), the bound tightens. Honest by design: when there are too few labelled failures to certify a tight α, it says so.
       </div>
     </div>
   );
@@ -330,7 +330,7 @@ function Configurator({ onApplied }: { onApplied: () => void }) {
 
   return (
     <div className="grid grid-cols-[380px_1fr] gap-4 max-lg:grid-cols-1">
-      <Card title="Describe your use case" desc="ControlPlane maps these business facts to the value-of-information knobs — no manual tuning.">
+      <Card title="Describe your use case" desc="ControlPlane maps these business facts to the value-of-information knobs, no manual tuning.">
         <div className="mb-3">
           <div className="mb-1 text-[12px] font-medium text-muted">Start from a preset</div>
           <div className="flex flex-wrap gap-1.5">
@@ -366,7 +366,7 @@ function Configurator({ onApplied }: { onApplied: () => void }) {
             <Kpi label="Escalations" value={`${(proj.escalation_rate * 100).toFixed(0)}%`} foot={`${proj.human_reviews_per_month.toLocaleString()}/mo to humans`} />
             <Kpi label="Projected net / mo" value={usd(proj.projected_monthly_net_usd)} tone={proj.self_funding ? "good" : "bad"} foot={proj.self_funding ? "self-funding" : ""} />
           </div>
-          <Card title={`Generated policy · ${res.profile_id}`} desc="Why each knob is set the way it is — the mapping is legible, not a black box.">
+          <Card title={`Generated policy · ${res.profile_id}`} desc="Why each knob is set the way it is, the mapping is legible, not a black box.">
             <div className="mb-3 grid grid-cols-2 gap-2 text-[13px] max-md:grid-cols-1">
               {res.rationale.map((r, i) => <div key={i} className="rounded-lg border border-line bg-panel-2 px-3 py-2 text-muted">{r}</div>)}
             </div>
@@ -395,7 +395,7 @@ function Onboard({ onDismiss, onSend, busy }: { onDismiss: () => void; onSend: (
   const steps = [
     { icon: Play, t: "Send demo traffic", d: "populate the tower with real overseen requests" },
     { icon: MousePointerClick, t: "Open any decision", d: "see its verdict and value-of-information trace" },
-    { icon: Sparkles, t: "Explore the panels", d: "P&L, latency, agents, compliance — each has a Run button" },
+    { icon: Sparkles, t: "Explore the panels", d: "P&L, latency, agents, compliance, each has a Run button" },
   ];
   return (
     <div className="mb-4 flex items-center gap-4 rounded-xl border border-line bg-panel px-4 py-3 max-md:flex-col max-md:items-start" style={{ boxShadow: "var(--shadow)" }}>
@@ -404,7 +404,7 @@ function Onboard({ onDismiss, onSend, busy }: { onDismiss: () => void; onSend: (
         {steps.map((s, i) => { const Icon = s.icon; return (
           <span key={s.t} className="inline-flex items-center gap-1.5 text-[13px] text-muted">
             <span className="num text-faint">{i + 1}</span><Icon size={13} style={{ color: "var(--accent)" }} />
-            <b className="text-ink">{s.t}</b> — {s.d}
+            <b className="text-ink">{s.t}</b>, {s.d}
           </span>
         ); })}
       </div>
@@ -416,8 +416,8 @@ function Onboard({ onDismiss, onSend, busy }: { onDismiss: () => void; onSend: (
 
 function GetStarted({ onSend, busy }: { onSend: () => void; busy: boolean }) {
   const steps = [
-    { n: "1", t: "Send demo traffic", d: "Nine realistic support/agent requests run through the value-of-information cascade — most clear instantly, a few climb to a model or a human." },
-    { n: "2", t: "Watch the P&L go negative", d: "Cost-axis savings (route-downs, cache) pay for the safety checks — oversight with a negative price tag." },
+    { n: "1", t: "Send demo traffic", d: "Nine realistic support/agent requests run through the value-of-information cascade, most clear instantly, a few climb to a model or a human." },
+    { n: "2", t: "Watch the P&L go negative", d: "Cost-axis savings (route-downs, cache) pay for the safety checks, oversight with a negative price tag." },
     { n: "3", t: "Drill into any decision", d: "Every response has a signed receipt: the per-axis verdict, which checks ran and why, and the action taken." },
   ];
   return (
@@ -425,7 +425,7 @@ function GetStarted({ onSend, busy }: { onSend: () => void; busy: boolean }) {
       <div className="card flex flex-col items-center gap-3 py-12 text-center" style={{ background: "radial-gradient(700px 220px at 50% -10%, var(--accent-dim), var(--grad-1))" }}>
         <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}><Play size={22} /></div>
         <h2 className="text-2xl font-semibold tracking-tight">Start the live tower</h2>
-        <p className="max-w-[520px] text-muted">This is the real oversight engine — nothing is pre-computed. Send a burst of demo traffic and the dashboard fills with live decisions you can inspect.</p>
+        <p className="max-w-[520px] text-muted">This is the real oversight engine, nothing is pre-computed. Send a burst of demo traffic and the dashboard fills with live decisions you can inspect.</p>
         <button className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-[15px]" disabled={busy} onClick={onSend}><Play size={16} />{busy ? "running…" : "Send demo traffic"}</button>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-3 max-md:grid-cols-1">
@@ -437,7 +437,7 @@ function GetStarted({ onSend, busy }: { onSend: () => void; busy: boolean }) {
           </div>
         ))}
       </div>
-      <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-faint"><Info size={12} /> Everything is real and reproducible — see the <b className="text-muted">Getting started</b> panel for the one-line integration.</p>
+      <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-faint"><Info size={12} /> Everything is real and reproducible, see the <b className="text-muted">Getting started</b> panel for the one-line integration.</p>
     </div>
   );
 }
@@ -450,22 +450,22 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
       <div className="grid grid-cols-6 gap-3 max-xl:grid-cols-3">
         <Kpi label="Decisions" value={s?.requests ?? 0} foot="overseen inline" />
         <Kpi label="Net P&L" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : "safety > savings"} info="Safety spend minus cost saved. Negative = oversight pays for itself." />
-        <Kpi label="Cleared @ T0" value={`${s?.cleared_at_t0_pct ?? 100}%`} foot="free tier, ~0ms" info="Share resolved by free checks — the fast path." />
+        <Kpi label="Cleared @ T0" value={`${s?.cleared_at_t0_pct ?? 100}%`} foot="free tier, ~0ms" info="Share resolved by free checks, the fast path." />
         <Kpi label="Scrutiny" value={`${(s?.scrutiny ?? 1).toFixed(2)}×`} foot="adaptive thermostat" info="Auto-scales verification with recent risk." />
         <Kpi label="Escalations" value={s?.by_action?.escalate ?? 0} foot="to a human" />
         <Kpi label="Blocks" value={s?.by_action?.block ?? 0} foot="unsafe / leaks" />
       </div>
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
         <Card title="Cumulative oversight P&L" desc="Every point is a decision; below zero means the cost-axis savings are paying for the safety checks."><Sparkline series={net} /></Card>
-        <Card title="Recent decisions" desc="Newest first — click any row for the full receipt.">
+        <Card title="Recent decisions" desc="Newest first, click any row for the full receipt.">
           <div className="flex max-h-[250px] flex-col gap-2 overflow-auto">
             {receipts.length ? receipts.slice(0, 12).map((r) => <FeedRow key={r.request_id} r={r} onOpen={onOpen} />)
-              : <div className="rounded-xl border border-dashed border-line p-10 text-center text-faint">No traffic yet — click “Send demo traffic”.</div>}
+              : <div className="rounded-xl border border-dashed border-line p-10 text-center text-faint">No traffic yet, click “Send demo traffic”.</div>}
           </div>
         </Card>
       </div>
       <div className="grid grid-cols-[1.3fr_1fr] gap-4 max-lg:grid-cols-1">
-        <Card title="Action mix" desc="How verdicts split across the fleet — most pass, the tail is repaired, escalated, or blocked.">
+        <Card title="Action mix" desc="How verdicts split across the fleet, most pass, the tail is repaired, escalated, or blocked.">
           {(() => {
             const ba = s?.by_action ?? {}; const total = Object.values(ba).reduce((a, b) => a + b, 0) || 1;
             const order: Action[] = ["pass", "annotate", "auto_repair", "escalate", "block"];
@@ -481,16 +481,16 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
         </Card>
         <Card title="System status">
           <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
-            <span className="text-muted">active policy</span><span className="num truncate">{s?.active_policy ?? "—"}</span>
-            <span className="text-muted">groundedness</span><span>{s?.models?.groundedness ?? "—"}</span>
+            <span className="text-muted">active policy</span><span className="num truncate">{s?.active_policy ?? "-"}</span>
+            <span className="text-muted">groundedness</span><span>{s?.models?.groundedness ?? "-"}</span>
             <span className="text-muted">safety · judge</span><span>{s?.models?.safety ?? "heuristic"} · {s?.models?.judge ?? "off"}</span>
-            <span className="text-muted">audit chain</span><span style={{ color: s?.chain_valid ? "var(--pass)" : "var(--block)" }}>{s?.chain_valid ? "verified ✓" : "—"}</span>
+            <span className="text-muted">audit chain</span><span style={{ color: s?.chain_valid ? "var(--pass)" : "var(--block)" }}>{s?.chain_valid ? "verified ✓" : "-"}</span>
           </div>
         </Card>
       </div>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4">
         <h4 className="mb-2 text-[13px] text-accent">What am I looking at?</h4>
-        <p className="text-sm text-muted">ControlPlane sits in front of any model. For every response it decides <b className="text-ink">how much verification that response is worth</b> — buying the cheapest signal that could change the decision first, and letting cost-axis savings pay for the safety checks. Most responses clear instantly at the free tier; only the uncertain, high-stakes tail climbs to costly checks or a human. New here? Open <b className="text-ink">Getting started</b>.</p>
+        <p className="text-sm text-muted">ControlPlane sits in front of any model. For every response it decides <b className="text-ink">how much verification that response is worth</b>, buying the cheapest signal that could change the decision first, and letting cost-axis savings pay for the safety checks. Most responses clear instantly at the free tier; only the uncertain, high-stakes tail climbs to costly checks or a human. New here? Open <b className="text-ink">Getting started</b>.</p>
       </div>
     </div>
   );
@@ -517,7 +517,7 @@ function Feed({ receipts, onOpen }: { receipts: Receipt[]; onOpen: (r: Receipt) 
 
 function Quadrant({ receipts }: { receipts: Receipt[] }) {
   return (
-    <Card desc="Each dot is a response, placed by estimated correctness (x) and model confidence (y), coloured by action. The shaded top-left — high confidence, low correctness — is where hallucinations do damage.">
+    <Card desc="Each dot is a response, placed by estimated correctness (x) and model confidence (y), coloured by action. The shaded top-left, high confidence, low correctness, is where hallucinations do damage.">
       <QuadrantChart receipts={receipts} />
       <div className="mt-2 flex flex-wrap gap-3.5 text-[11px] text-muted">
         {Object.entries(ACTION_COLOR).map(([k, c]) => <span key={k} className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />{k.replace("_", "-")}</span>)}
@@ -610,7 +610,7 @@ function RuntimeHealth() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-4 gap-3 max-xl:grid-cols-2">
-        <Kpi label="p95 oversight" value={`${p?.p95 ?? "—"} ms`} tone="good" foot={`${p?.sample_count ?? 0} samples`} />
+        <Kpi label="p95 oversight" value={`${p?.p95 ?? "-"} ms`} tone="good" foot={`${p?.sample_count ?? 0} samples`} />
         <Kpi label="throughput" value={`${(obs?.throughput_rps ?? 0).toFixed(2)} rps`} foot={`${obs?.active_requests ?? 0} active`} />
         <Kpi label="overload shed" value={`${obs?.overload_rejections ?? 0}`} foot={`max concurrency ${obs?.max_concurrency ?? 0}`} />
         <Kpi label="stream aborts" value={`${obs?.stream_aborts ?? 0}`} foot={`${obs?.errors ?? 0} errors`} />
@@ -621,7 +621,7 @@ function RuntimeHealth() {
           <span className={`badge ${ready?.ready ? "badge-pass" : "badge-escalate"}`}>{ready?.ready ? "ready" : "warming / unavailable"}</span>
           <span className="text-sm text-muted">
             warm-up {warm?.status ?? "unknown"}{warm?.elapsed_seconds != null ? ` · ${warm.elapsed_seconds}s` : ""}
-            {" · "}upstream {ready?.upstream ?? "—"}
+            {" · "}upstream {ready?.upstream ?? "-"}
           </span>
         </div>
         {warm?.error && <div className="mt-3 rounded-lg border border-block/40 bg-block/5 p-3 text-sm text-block">{warm.error}</div>}
@@ -641,18 +641,18 @@ function RuntimeHealth() {
 
       <Card title="Semantic response cache" desc="Cache hits avoid upstream generation while still passing through the normal policy/oversight path.">
         <div className="grid grid-cols-5 gap-3 max-xl:grid-cols-2">
-          <Kpi label="entries" value={cache?.entries ?? "—"} />
-          <Kpi label="hit rate" value={cache && (cache.cache_hits + cache.cache_misses) ? `${((cache.cache_hits / (cache.cache_hits + cache.cache_misses)) * 100).toFixed(1)}%` : "—"} />
-          <Kpi label="exact hits" value={cache?.exact_cache_hits ?? "—"} />
-          <Kpi label="semantic hits" value={cache?.semantic_cache_hits ?? "—"} />
-          <Kpi label="upstream calls" value={cache?.upstream_calls ?? "—"} />
+          <Kpi label="entries" value={cache?.entries ?? "-"} />
+          <Kpi label="hit rate" value={cache && (cache.cache_hits + cache.cache_misses) ? `${((cache.cache_hits / (cache.cache_hits + cache.cache_misses)) * 100).toFixed(1)}%` : "-"} />
+          <Kpi label="exact hits" value={cache?.exact_cache_hits ?? "-"} />
+          <Kpi label="semantic hits" value={cache?.semantic_cache_hits ?? "-"} />
+          <Kpi label="upstream calls" value={cache?.upstream_calls ?? "-"} />
         </div>
       </Card>
 
       <Card title="Service readiness" desc="Bounded concurrency protects the oversight layer itself under load.">
         <div className="flex flex-wrap items-center gap-3">
           <span className={`badge ${ready?.ready ? "badge-pass" : "badge-escalate"}`}>{ready?.ready ? "ready" : "not ready"}</span>
-          <span className="text-sm text-muted">max concurrency {obs?.config.max_concurrency ?? "—"} · queue timeout {obs?.config.queue_timeout_ms ?? "—"} ms · upstream timeout {obs?.config.upstream_timeout_s ?? "—"} s · retries {obs?.config.upstream_retries ?? "—"}</span>
+          <span className="text-sm text-muted">max concurrency {obs?.config.max_concurrency ?? "-"} · queue timeout {obs?.config.queue_timeout_ms ?? "-"} ms · upstream timeout {obs?.config.upstream_timeout_s ?? "-"} s · retries {obs?.config.upstream_retries ?? "-"}</span>
           <button className="btn-primary ml-auto" onClick={runProbe} disabled={probing || !ready?.ready}>{probing ? "running…" : "Run concurrency probe"}</button>
         </div>
       </Card>
@@ -679,7 +679,7 @@ function Benchmark() {
   const [n, setN] = useState(2000), [w, setW] = useState(50000), [res, setRes] = useState<any>(null);
   const { prog, run } = useJob();
   return (
-    <Card title="Latency / throughput benchmark" desc="Runs N requests through the local cascade and measures the wall-clock oversight adds per request (the model call is excluded). The T2 judge is off here — it fires only on the uncertain tail.">
+    <Card title="Latency / throughput benchmark" desc="Runs N requests through the local cascade and measures the wall-clock oversight adds per request (the model call is excluded). The T2 judge is off here, it fires only on the uncertain tail.">
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm text-muted">requests</label>
         <select className="btn" value={n} onChange={(e) => setN(+e.target.value)}>{[1000, 2000, 5000].map((x) => <option key={x}>{x}</option>)}</select>
@@ -701,7 +701,7 @@ function Benchmark() {
             <Kpi label="throughput" value={`${res.throughput_rps.toLocaleString()} rps`} />
           </div>
           <div className="mt-3.5 grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-            <Card title="At enterprise scale" desc="Extrapolated from measured per-request economics — simulated traffic at sourced prices, not billing.">
+            <Card title="At enterprise scale" desc="Extrapolated from measured per-request economics, simulated traffic at sourced prices, not billing.">
               <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                 <span className="text-muted">weekly volume</span><span className="num">{res.at_scale.weekly_volume.toLocaleString()}</span>
                 <span className="text-muted">weekly net</span><span className={`num ${res.at_scale.weekly_net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(res.at_scale.weekly_net_usd)}</span>
@@ -756,7 +756,7 @@ function Agents() {
   const AC: Record<string, [string, string]> = { continue: ["#3fb950", "CONTINUE"], escalate: ["#d9a221", "FLAG"], abort: ["#f85149", "ABORT"] };
   const go = async () => { setLoading(true); try { setR(await api.agentDemo()); toast("Agent trajectory audited", "", "ok"); } catch (e) { toast("Failed", String(e), "err"); } setLoading(false); };
   return (
-    <Card desc="A support agent hallucinates a “365-day premium refund” no source supports, then loops to confirm its own invention. The auditor watches risk compound step-by-step and aborts before the wrong answer reaches the user — saving the wasted steps.">
+    <Card desc="A support agent hallucinates a “365-day premium refund” no source supports, then loops to confirm its own invention. The auditor watches risk compound step-by-step and aborts before the wrong answer reaches the user, saving the wasted steps.">
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run agent trajectory"}</button>
       {r && (
         <div className="mt-4">
@@ -821,8 +821,8 @@ function Detectors({ summary }: { summary: Summary | null }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
-        <Kpi label="Groundedness" value={m?.groundedness ?? "—"} tone={m?.groundedness?.includes("hhem") ? "good" : undefined} foot="performance axis" />
-        <Kpi label="PII" value={m?.pii ?? "—"} tone={m?.pii?.includes("presidio") ? "good" : undefined} foot="responsibility axis" />
+        <Kpi label="Groundedness" value={m?.groundedness ?? "-"} tone={m?.groundedness?.includes("hhem") ? "good" : undefined} foot="performance axis" />
+        <Kpi label="PII" value={m?.pii ?? "-"} tone={m?.pii?.includes("presidio") ? "good" : undefined} foot="responsibility axis" />
         <Kpi label="Safety" value={m?.safety ?? "heuristic"} tone={m?.safety && m.safety !== "heuristic" ? "good" : undefined} foot="responsibility axis" />
         <Kpi label="Judge (T2)" value={m?.judge ?? "disabled"} tone={m?.judge && m.judge !== "disabled" ? "good" : undefined} foot="uncertain tail only" />
       </div>
@@ -852,12 +852,12 @@ function Help() {
   return (
     <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
       <Card title="The one-line integration">
-        <p className="mb-2 text-[12.5px] text-muted">Point any OpenAI client at The Tower — nothing else changes:</p>
+        <p className="mb-2 text-[12.5px] text-muted">Point any OpenAI client at The Tower, nothing else changes:</p>
         <pre className="code">{`client = OpenAI(
   base_url="http://localhost:8000/v1",
   api_key="anything",
 )`}</pre>
-        <p className="mt-2.5 text-[12.5px] text-muted">Every response is then overseen inline: passed, annotated, auto-repaired from source, escalated to a human, or blocked — each with a signed receipt.</p>
+        <p className="mt-2.5 text-[12.5px] text-muted">Every response is then overseen inline: passed, annotated, auto-repaired from source, escalated to a human, or blocked, each with a signed receipt.</p>
       </Card>
       <Card title="The three coupled risks">
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
@@ -865,14 +865,14 @@ function Help() {
           <span style={{ color: AXIS_COLOR.cost }}>cost</span><span>a cheaper path to the same quality (this funds the rest)</span>
           <span style={{ color: AXIS_COLOR.responsibility }}>responsibility</span><span>unsafe, biased, or leaking data</span>
         </div>
-        <p className="mt-2.5 text-[12.5px] text-muted">One verdict across all three — not three separate tools.</p>
+        <p className="mt-2.5 text-[12.5px] text-muted">One verdict across all three, not three separate tools.</p>
       </Card>
       <Card title="Glossary">
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-          <span className="text-muted">VoI</span><span>value of information — run a check only if it could change the decision</span>
+          <span className="text-muted">VoI</span><span>value of information, run a check only if it could change the decision</span>
           <span className="text-muted">Net P&L</span><span>safety spend − cost saved; negative = self-funding</span>
           <span className="text-muted">Cleared @ T0</span><span>resolved by free checks (the fast path)</span>
-          <span className="text-muted">Escalate</span><span>held for a human — the uncertain, high-stakes tail</span>
+          <span className="text-muted">Escalate</span><span>held for a human, the uncertain, high-stakes tail</span>
           <span className="text-muted">Receipt</span><span>the hash-chained audit record of one decision</span>
         </div>
       </Card>
@@ -931,7 +931,7 @@ function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () 
   };
   const trace = r.trace.filter((s) => s.tier > 0).map((s) =>
     `${s.ran ? "RAN " : "SKIP"} T${s.tier} ${s.detector.padEnd(20)} voi=${(s.voi || 0).toFixed(5)} vs cost=${(s.check_cost || 0).toFixed(5)}  (${s.reason})`).join("\n")
-    || "all resolved at T0 — no higher-tier check was worth its cost";
+    || "all resolved at T0, no higher-tier check was worth its cost";
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />

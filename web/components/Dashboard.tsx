@@ -528,17 +528,29 @@ function Quadrant({ receipts }: { receipts: Receipt[] }) {
 
 function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
   const s = summary;
+  const measured = s ? s.measured_requests > 0 : false;
+  const proj = s?.projection;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-3 gap-3">
         <Kpi label="Cost saved" value={usd(s?.cost_saved_usd ?? 0)} tone="good" foot="route-down + cache" />
         <Kpi label="Safety spend" value={usd(s?.safety_spend_usd ?? 0)} foot="checks that ran" />
-        <Kpi label="Net" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : ""} />
+        <Kpi label="Automated net" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"}
+          foot={measured ? `${s?.measured_requests}/${s?.requests} measured on live model` : "self-funding"} />
       </div>
+      {proj && (
+        <Card title="Projected at enterprise scale" desc={`The same per-request economics at ${proj.weekly_volume.toLocaleString()} requests/week (the brief's reference volume). Sourced list prices, an estimate not a bill.`}>
+          <div className="grid grid-cols-3 gap-3">
+            <Kpi label="Weekly net" value={usd(proj.weekly_net_usd)} tone={proj.weekly_net_usd < 0 ? "good" : "bad"} />
+            <Kpi label="Annual net" value={usd(proj.annual_net_usd)} tone={proj.annual_net_usd < 0 ? "good" : "bad"} />
+            <Kpi label="Human review" value={usd(s?.human_review_usd ?? 0)} foot="analyst time on escalations" />
+          </div>
+        </Card>
+      )}
       <Card title="Cumulative net"><Sparkline series={net} /></Card>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4">
         <h4 className="mb-2 text-[13px] text-accent">Why can oversight be cheaper than nothing?</h4>
-        <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer — routing an easy question to a small model, serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings win, the net goes negative: safety <i>and</i> a lower bill. Prices are sourced (docs/EVIDENCE.md).</p>
+        <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer: routing an easy question to a small model, or serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings win, the automated net goes below zero, meaning safety <i>and</i> a lower bill. Human review of escalations is a separate, deliberate cost. Prices are sourced (docs/EVIDENCE.md).</p>
       </div>
     </div>
   );

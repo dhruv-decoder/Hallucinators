@@ -230,6 +230,17 @@ class GroqUpstream:
     name = "groq"
     _BASE = "https://api.groq.com/openai/v1"
 
+    #: Map any client-supplied model name to a model Groq actually hosts, so the real path never silently
+    #: falls back to the simulator just because the client asked for a name Groq does not serve (e.g. an
+    #: OpenAI/Anthropic name). Flagship names -> the 120b; cheaper/mini names -> the 20b.
+    _FLAGSHIP = "openai/gpt-oss-120b"
+    _CHEAP = "openai/gpt-oss-20b"
+    _MODEL_MAP = {
+        "gpt-4o": _FLAGSHIP, "gpt-5": _FLAGSHIP, "gpt-4": _FLAGSHIP,
+        "claude-opus-5": _FLAGSHIP, "claude-sonnet-5": _FLAGSHIP,
+        "gpt-4o-mini": _CHEAP, "gpt-5-mini": _CHEAP, "claude-haiku-4.5": _CHEAP,
+    }
+
     def __init__(self, model: str = "openai/gpt-oss-20b") -> None:
         self.model = model
 
@@ -237,12 +248,23 @@ class GroqUpstream:
     def available() -> bool:
         return bool(os.environ.get("GROQ_API_KEY"))
 
+    @classmethod
+    def to_groq_model(cls, model: str | None) -> str:
+        """Resolve a requested model name to one Groq hosts, so the real call always succeeds."""
+        if not model:
+            return cls._CHEAP
+        if model in cls._MODEL_MAP:
+            return cls._MODEL_MAP[model]
+        if model.startswith(("openai/", "groq/", "qwen/", "llama", "meta-", "mistral", "gemma", "deepseek")):
+            return model  # already a Groq-hosted name
+        return cls._CHEAP  # unknown -> cheapest real model so the call still succeeds (and stays measured)
+
     def generate(
         self, prompt: str, model: str | None = None, use_case: str | None = None, context: str | None = None
     ) -> Generation:
         import httpx
 
-        model = model or self.model
+        model = self.to_groq_model(model or self.model)
         messages = []
         if context:
             messages.append({"role": "system", "content": "Answer using only this source:\n" + context})
@@ -269,6 +291,32 @@ class GroqUpstream:
         )
 
 
+class HybridDemoUpstream:
+    """Real model for benign / arbitrary traffic, scripted only for the planted risk scenarios.
+
+    This lets the demo run on a **real** model (measured token counts, real answers, genuine oversight) while
+    keeping the guardrail demonstrations reliable: the handful of scenarios that carry an ``injected_failure``
+    (PII leak, prompt injection, a fabricated fact about a named person) stay scripted so the corresponding
+    check fires every time. Everything else -- support questions, arbitrary ``/chat/completions`` prompts --
+    goes to the real model and is measured. Falls back to the simulator if the real call fails.
+    """
+
+    name = "hybrid"
+
+    def __init__(self, real, simulated: SimulatedUpstream | None = None) -> None:
+        self.real = real
+        self.simulated = simulated or SimulatedUpstream()
+
+    def generate(self, prompt: str, model: str, use_case: str | None = None) -> Generation:
+        scenario = self.simulated._match(_norm(prompt))
+        if scenario.injected_failure is not None:
+            return self.simulated.generate(prompt, model, use_case)  # scripted risk -> reliable guardrail demo
+        try:  # benign or arbitrary prompt -> the real model, measured
+            return self.real.generate(prompt, model, use_case)
+        except Exception:  # noqa: BLE001 -- network/API hiccup falls back to the offline path
+            return self.simulated.generate(prompt, model, use_case)
+
+
 def _has_provider_key() -> bool:
     return any(
         os.environ.get(k)
@@ -277,10 +325,16 @@ def _has_provider_key() -> bool:
 
 
 def build_upstream(force_simulated: bool = False):
-    """Pick the upstream: real ``litellm`` if a key is present and the SDK imports, else the simulator."""
-    if force_simulated or not _has_provider_key():
+    """Pick the upstream. With a Groq key: a hybrid that runs benign/arbitrary traffic on the real Groq
+    model (measured) and keeps the planted risk scenarios scripted. With another provider key and the
+    ``litellm`` SDK: that. Otherwise the fully offline simulator."""
+    if force_simulated:
         return SimulatedUpstream()
-    try:
-        return LiteLLMUpstream()
-    except Exception:  # noqa: BLE001 -- any import/config failure falls back to the offline path
-        return SimulatedUpstream()
+    if GroqUpstream.available():
+        return HybridDemoUpstream(GroqUpstream(), SimulatedUpstream())
+    if _has_provider_key():
+        try:
+            return LiteLLMUpstream()
+        except Exception:  # noqa: BLE001 -- any import/config failure falls back to the offline path
+            return SimulatedUpstream()
+    return SimulatedUpstream()

@@ -19,7 +19,9 @@ export interface Receipt {
   pnl: Pnl; hash_self: string; hash_prev: string;
 }
 export interface Summary {
-  requests: number; cost_saved_usd: number; safety_spend_usd: number; net_usd: number; self_funding: boolean;
+  requests: number; measured_requests: number; cost_saved_usd: number; safety_spend_usd: number; net_usd: number;
+  human_review_usd: number; self_funding: boolean;
+  projection: { weekly_volume: number; weekly_net_usd: number; annual_net_usd: number; note: string };
   by_action: Partial<Record<Action, number>>; cleared_at_t0_pct: number; scrutiny: number; chain_valid: boolean;
   active_policy: string; policies: Record<string, string>; models: { groundedness: string; pii: string; safety?: string; judge: string };
 }

@@ -527,12 +527,29 @@ class OversightService:
             by_action[r.action.value] = by_action.get(r.action.value, 0) + 1
         cleared_at_t0 = sum(1 for r in receipts if not any(s.ran and int(s.tier) > 0 for s in r.trace))
         n = len(receipts)
+        # Human-in-the-loop review cost: escalations sent to a person (analyst time), booked separately from
+        # the automated self-funding net so both stories stay clean.
+        escalations = by_action.get("escalate", 0)
+        human_review_usd = self.ledger.pricing.review_cost(escalations)
+        measured = sum(1 for r in receipts if getattr(r.pnl, "token_source", "") == "measured")
+        # Enterprise projection: extrapolate the per-request economics to the brief's reference volume so the
+        # headline is a meaningful figure, not a per-demo penny. Labelled as an extrapolation, not a bill.
+        weekly_volume = 50_000
+        per_req_net = totals.net_usd / n if n else 0.0
         return {
             "requests": n,
+            "measured_requests": measured,
             "cost_saved_usd": round(totals.cost_saved_usd, 6),
             "safety_spend_usd": round(totals.safety_spend_usd, 6),
             "net_usd": round(totals.net_usd, 6),
+            "human_review_usd": round(human_review_usd, 6),
             "self_funding": totals.net_usd < 0,
+            "projection": {
+                "weekly_volume": weekly_volume,
+                "weekly_net_usd": round(per_req_net * weekly_volume, 2),
+                "annual_net_usd": round(per_req_net * weekly_volume * 52, 2),
+                "note": "per-request net extrapolated to the brief's reference volume at sourced list prices; an estimate, not a bill",
+            },
             "by_action": by_action,
             "cleared_at_t0_pct": round(100.0 * cleared_at_t0 / n, 1) if n else 100.0,
             "scrutiny": round(self.thermostat.scrutiny, 3) if self.thermostat else 1.0,

@@ -118,6 +118,10 @@ export const api = {
   ready: () => jget<{ ready: boolean; upstream: string; policy_loaded: boolean; recorder: boolean; warmup: WarmupStatus }>('/readyz'),
   runtimeProbe: (n = 120, concurrency = 16) => jpost<JobSnapshot>(`/v1/oversight/jobs/runtime-probe?n=${n}&concurrency=${concurrency}`),
   verifyReceipt: (id: string) => jget<{ request_id: string; receipt_valid: boolean; chain_valid: boolean; hash_self: string; hash_prev: string }>(`/v1/oversight/receipts/${encodeURIComponent(id)}/verify`),
+  override: (request_id: string, is_failure: boolean, axis = "performance") =>
+    fetch(`${API_BASE}/v1/oversight/override`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request_id, is_failure, axis }),
+    }).then((r) => r.json() as Promise<{ recorded: boolean; detectors_refit: string[]; feedback_counts: Record<string, number>; threshold: number }>),
   cache: () => jget<CacheStatus>('/v1/oversight/cache'),
   informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),
 };

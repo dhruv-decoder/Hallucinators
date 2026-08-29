@@ -154,6 +154,16 @@ class OversightService:
         except Exception:  # noqa: BLE001 - learned eta is an optional runtime enhancement
             self._learned_informativeness = {}
         self.ledger = PnlLedger()
+        # Live feedback loop: a human override on a decision is recorded against the detectors that fired, and
+        # once a detector has enough labelled overrides its calibrator is refit and hot-swapped into the engine
+        # (which shares ``self.calibrators``), so detection gets more honest from real use. Threshold is
+        # demo-friendly by default; raise CONTROLPLANE_FEEDBACK_MIN in production.
+        from collections import OrderedDict as _OrderedDict
+
+        from controlplane.feedback.loop import FeedbackLoop
+
+        self.feedback = FeedbackLoop(min_samples=int(os.environ.get("CONTROLPLANE_FEEDBACK_MIN", "12")))
+        self._recent_signals: _OrderedDict = _OrderedDict()  # request_id -> [(name, axis, score)]
         # A ``.db`` path selects the durable SQLite recorder; anything else uses the JSONL reference store.
         # Both share the record / receipts / verify_chain interface, so everything downstream is unchanged.
         if recorder_path and str(recorder_path).endswith(".db"):
@@ -347,6 +357,12 @@ class OversightService:
             )
             if self.thermostat:
                 self.thermostat.observe(risk_score(result))
+            # Remember which detectors fired (for a later human override -> recalibrate). Bounded.
+            self._recent_signals[receipt.request_id] = [
+                (sig.name, sig.axis.value, sig.score) for sig in result.signals
+            ]
+            while len(self._recent_signals) > 1000:
+                self._recent_signals.popitem(last=False)
             self._subscribers.publish(receipt)
 
         result_obj = OverseeResult(
@@ -519,6 +535,43 @@ class OversightService:
 
     def unsubscribe(self, q: queue.Queue[VoIReceipt]) -> None:
         self._subscribers.remove(q)
+
+    def apply_override(self, request_id: str, is_failure: bool, axis: str = "performance") -> dict:
+        """Record a human verdict on a past decision and refit any detector that now has enough feedback.
+
+        ``is_failure`` is the human's ground truth: was the response actually a failure on ``axis``? Each
+        detector that fired on that axis gets one labelled sample. When a detector crosses the feedback
+        threshold, its calibrator is refit from the accumulated overrides and hot-swapped into the live engine
+        (which shares ``self.calibrators``), so detection gets more honest from real use.
+        """
+        signals = self._recent_signals.get(request_id)
+        if signals is None:
+            raise KeyError(request_id)
+        refit: list[str] = []
+        with self._lock:
+            for name, sig_axis, score in signals:
+                if sig_axis != axis:
+                    continue
+                self.feedback.record_signal(name, score, is_failure)
+                if self.feedback.sample_count(name) >= self.feedback.min_samples:
+                    fitted = self.feedback.calibrators().get(name)
+                    if fitted is not None:
+                        self.calibrators[name] = fitted  # engine shares this dict -> takes effect live
+                        refit.append(name)
+            counts = {
+                name: self.feedback.sample_count(name)
+                for name, sig_axis, _ in signals
+                if sig_axis == axis
+            }
+        return {
+            "recorded": True,
+            "request_id": request_id,
+            "axis": axis,
+            "is_failure": is_failure,
+            "detectors_refit": refit,
+            "feedback_counts": counts,
+            "threshold": self.feedback.min_samples,
+        }
 
     def summary(self) -> dict:
         """Aggregate state for the dashboard header + P&L card."""

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity, Crosshair, Cpu, FlaskConical, Gauge, History, Info, LayoutGrid, LifeBuoy, MousePointerClick,
-  Play, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Wallet, Workflow, X,
+  Play, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
 import { Action, AgentReceipt, api, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, Summary, UseCaseSpec } from "@/lib/api";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
@@ -890,6 +890,35 @@ function Help() {
   );
 }
 
+function OverrideControl({ requestId }: { requestId: string }) {
+  const [done, setDone] = useState<{ refit: string[]; counts: Record<string, number>; threshold: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const send = async (isFailure: boolean) => {
+    setBusy(true);
+    try {
+      const res = await api.override(requestId, isFailure, "performance");
+      setDone({ refit: res.detectors_refit, counts: res.feedback_counts, threshold: res.threshold });
+      toast(res.detectors_refit.length ? "Detection recalibrated" : "Feedback recorded",
+        res.detectors_refit.length ? `Refit: ${res.detectors_refit.join(", ")}` : "Detectors updated with your label", "ok");
+    } catch (e) { toast("Failed", String(e), "err"); }
+    setBusy(false);
+  };
+  return (
+    <div>
+      <div className="flex gap-2">
+        <button className="btn" onClick={() => send(false)} disabled={busy}><ThumbsUp size={13} /> Verdict was right</button>
+        <button className="btn" onClick={() => send(true)} disabled={busy}><ThumbsDown size={13} /> Actually a failure</button>
+      </div>
+      {done && (
+        <div className="mt-2 rounded-lg border border-line bg-panel-2 p-3 text-xs text-muted">
+          {Object.entries(done.counts).map(([k, v]) => <span key={k} className="mr-3">{k}: {v}/{done.threshold}</span>)}
+          {done.refit.length > 0 && <div className="mt-1 text-pass">recalibrated live: {done.refit.join(", ")}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---- receipt drawer ---- */
 function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () => void }) {
   const [verification, setVerification] = useState<Awaited<ReturnType<typeof api.verifyReceipt>> | null>(null);
@@ -934,7 +963,10 @@ function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () 
             receipt hash: {verification.receipt_valid ? "valid" : "invalid"} · chain: {verification.chain_valid ? "valid" : "invalid"}
           </div>
         )}
-        <h4 className="mb-1.5 mt-4 text-[13px]">Tamper-evident chain</h4>
+        <h4 className="mb-1.5 mt-5 text-[13px]">Was this verdict right?</h4>
+        <p className="mb-2 text-xs text-muted">Your correction is recorded against the detectors that fired. Once a detector has enough labelled feedback, its calibration refits automatically, so detection gets more honest from real use.</p>
+        <OverrideControl requestId={r.request_id} />
+        <h4 className="mb-1.5 mt-5 text-[13px]">Tamper-evident chain</h4>
         <div className="break-all font-mono text-[10.5px] text-faint">self {r.hash_self}<br />prev {r.hash_prev || "genesis"}</div>
       </aside>
     </>

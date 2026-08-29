@@ -456,6 +456,23 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         """Run the compounding-hallucination agent trajectory under the trajectory auditor."""
         return await asyncio.to_thread(service.run_agent_demo)
 
+    @app.post("/v1/oversight/override")
+    async def override(request: Request) -> dict:
+        """Record a human verdict on a past decision -> feedback loop refits the detectors that fired.
+
+        Body: ``{"request_id": "...", "is_failure": true|false, "axis": "performance"|"responsibility"}``.
+        """
+        body = await request.json()
+        request_id = (body.get("request_id") or "").strip()
+        if not request_id:
+            raise HTTPException(status_code=400, detail="request_id is required")
+        axis = body.get("axis") or "performance"
+        is_failure = bool(body.get("is_failure", False))
+        try:
+            return await asyncio.to_thread(service.apply_override, request_id, is_failure, axis)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="unknown or expired request_id") from None
+
     @app.post("/v1/oversight/jobs/benchmark")
     def start_benchmark(n: int = 2000, weekly_volume: int = 50_000) -> dict:
         """Start the latency/throughput benchmark; poll GET /v1/oversight/jobs/{id} for progress + result."""

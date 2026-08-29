@@ -91,6 +91,16 @@ class PlattCalibrator(Calibrator):
         z = np.clip(self.a * x + self.b, -30.0, 30.0)
         return 1.0 / (1.0 + np.exp(-z))
 
+    def to_dict(self) -> dict:
+        """Serialize the fitted parameters so calibrators can be persisted to an artifact and reloaded."""
+        return {"type": "platt", "a": self.a, "b": self.b, "fitted": self.fitted}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> PlattCalibrator:
+        c = cls()
+        c.a, c.b, c.fitted = float(d["a"]), float(d["b"]), bool(d.get("fitted", True))
+        return c
+
 
 class IsotonicCalibrator(Calibrator):
     """Monotone non-decreasing calibration via Pool-Adjacent-Violators (PAV).

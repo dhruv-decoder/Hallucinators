@@ -1,0 +1,8 @@
+{
+  "groundedness_heuristic": {
+    "type": "platt",
+    "a": 7.880160785659832,
+    "b": -3.4760986898352733,
+    "fitted": true
+  }
+}

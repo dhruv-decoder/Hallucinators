@@ -127,10 +127,12 @@ class OversightService:
             calibrate = os.environ.get("CONTROLPLANE_CALIBRATE", "1").lower() not in ("0", "off", "false", "no")
         if calibrate:
             try:
-                from controlplane.cascade.calibrate_live import fit_live_calibrators
+                from controlplane.cascade.calibrate_live import fit_live_calibrators, load_calibrators
                 from controlplane.eval.dataset import synthetic_labeled_dataset
 
-                self.calibrators = fit_live_calibrators(synthetic_labeled_dataset())
+                # Prefer calibrators fitted offline on a substantial labelled set (HaluEval) and persisted to
+                # artifacts/calibrators.json; fall back to the tiny seed fit (which stays identity if too small).
+                self.calibrators = load_calibrators() or fit_live_calibrators(synthetic_labeled_dataset())
             except Exception:  # noqa: BLE001 - never let calibration fitting block startup
                 self.calibrators = {}
         # The factory picks the strongest detector stack available here (heuristics offline; HHEM / Presidio

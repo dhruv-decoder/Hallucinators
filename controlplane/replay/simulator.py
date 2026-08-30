@@ -6,7 +6,10 @@ baseline) and reports, for each, two things a skeptic cares about:
 - **residual risk** -- the model-estimated expected loss of the answers that still reach users. An answer
   that is blocked, escalated, or repaired is treated as handled (its risk is removed); an answer that is
   passed or annotated still carries its expected loss. Lower is safer.
-- **net cost** -- safety spend minus cost saved. Negative means oversight paid for itself.
+- **net benefit** -- cost saved minus safety spend. Positive means oversight paid for itself.
+
+The internal ``net_usd`` field retains the historical sign convention
+(``safety_spend - cost_saved``) for API compatibility.
 
 "Oversight off" is the honest baseline: every answer reaches the user unchanged and nothing is routed
 down or cached, so residual risk equals the full estimated risk and net cost is zero savings. The gap

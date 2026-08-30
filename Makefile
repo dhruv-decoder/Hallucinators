@@ -27,63 +27,76 @@ help:
 	@echo "make lint       - run ruff over the codebase"
 	@echo "make clean      - remove caches and build artifacts"
 
+# Prefer the platform's Python for creating the environment, then use the
+# venv interpreter directly so make works without an activation shell.
+ifeq ($(OS),Windows_NT)
+PYTHON ?= python
+VENV_PYTHON := .\.venv\Scripts\python.exe
+VENV_ACTIVATE_MSG := .\.venv\Scripts\Activate.ps1
+else
+PYTHON ?= python3
+VENV_PYTHON := .venv/bin/python
+VENV_ACTIVATE_MSG := source .venv/bin/activate
+endif
+
 install:
-	python3 -m venv .venv
-	. .venv/bin/activate && python -m pip install --upgrade pip && pip install -e ".[dev]"
-	@echo "Done. Activate with: source .venv/bin/activate"
+	$(PYTHON) -m venv .venv
+	$(VENV_PYTHON) -m pip install --upgrade pip
+	$(VENV_PYTHON) -m pip install -e ".[dev]"
+	@echo "Done. Activate with: $(VENV_ACTIVATE_MSG)"
 
 install-serve:
-	. .venv/bin/activate && pip install -e ".[dev,serve]"
+	$(VENV_PYTHON) -m pip install -e ".[dev,serve]"
 	@echo "Proxy deps installed. Run: make serve"
 
 install-semantic-cache:
-	. .venv/bin/activate && pip install -e ".[dev,serve,semantic-cache]"
+	$(VENV_PYTHON) -m pip install -e ".[dev,serve,semantic-cache]"
 	@echo "Semantic-cache embeddings installed. Enable with CONTROLPLANE_SEMANTIC_CACHE=1"
 
 test:
-	pytest
+	$(VENV_PYTHON) -m pytest
 
 demo:
-	python -m controlplane.demo.run_demo
+	$(VENV_PYTHON) -m controlplane.demo.run_demo
 
 whatif:
-	python -m controlplane.demo.run_whatif
+	$(VENV_PYTHON) -m controlplane.demo.run_whatif
 
 thermostat:
-	python -m controlplane.demo.run_thermostat
+	$(VENV_PYTHON) -m controlplane.demo.run_thermostat
 
 agent:
-	python -m controlplane.demo.run_agent
+	$(VENV_PYTHON) -m controlplane.demo.run_agent
 
 rag:
-	python -m controlplane.demo.run_rag $(ARGS)
+	$(VENV_PYTHON) -m controlplane.demo.run_rag $(ARGS)
 
 agent-live:
-	python -m controlplane.demo.run_live_agent $(ARGS)
+	$(VENV_PYTHON) -m controlplane.demo.run_live_agent $(ARGS)
 
 voi-contrast:
-	python -m controlplane.demo.run_voi_contrast
+	$(VENV_PYTHON) -m controlplane.demo.run_voi_contrast
 
 eval:
-	python -m controlplane.eval.run
+	$(VENV_PYTHON) -m controlplane.eval.run
 
 eval-real:
-	python -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
+	$(VENV_PYTHON) -m controlplane.eval.run_real --dataset halueval --limit 500 $(ARGS)
 
 eval-aggregate:
-	python -m controlplane.eval.aggregate --dataset halueval --limit 500 --warmup 20 --repeats 3 $(ARGS)
+	$(VENV_PYTHON) -m controlplane.eval.aggregate --dataset halueval --limit 500 --warmup 20 --repeats 3 $(ARGS)
 
 eval-eta:
-	python -m controlplane.eval.run_eta $(ARGS)
+	$(VENV_PYTHON) -m controlplane.eval.run_eta $(ARGS)
 
 conformal-real:
-	python -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 $(ARGS)
+	$(VENV_PYTHON) -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 $(ARGS)
 
 calibration:
-	python -m controlplane.eval.run_calibration $(ARGS)
+	$(VENV_PYTHON) -m controlplane.eval.run_calibration $(ARGS)
 
 serve:
-	python -m controlplane.proxy
+	$(VENV_PYTHON) -m controlplane.proxy
 
 # Recording / full-demo launch: turns on every model-backed detector we ship (HHEM-2.1 groundedness and the
 # Groq judge auto-enable from the installed extras + your GROQ_API_KEY; this also flips on Presidio PII, the
@@ -91,10 +104,10 @@ serve:
 # them. One command for a maximal, all-green demo. Falls back gracefully if any model is unavailable.
 serve-demo:
 	CONTROLPLANE_USE_PRESIDIO=1 CONTROLPLANE_USE_GROQ_SAFETY=1 CONTROLPLANE_SEMANTIC_CACHE=1 CONTROLPLANE_WARMUP=1 \
-		python -m controlplane.proxy
+		$(VENV_PYTHON) -m controlplane.proxy
 
 traffic:
-	python -m controlplane.proxy.traffic
+	$(VENV_PYTHON) -m controlplane.proxy.traffic
 
 web-install:
 	cd web && npm ci
@@ -113,5 +126,5 @@ clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache **/__pycache__ *.egg-info build dist
 
 experiment:
-	python -m controlplane.eval.run_experiment --dataset synthetic --models $(ARGS)
+	$(VENV_PYTHON) -m controlplane.eval.run_experiment --dataset synthetic --models $(ARGS)
 	@echo "\n  For the large-n version: make experiment ARGS=\"--dataset halueval --limit 400\""

@@ -123,7 +123,8 @@ def _print_receipt(receipt: VoIReceipt) -> None:
             )
     print(
         f"  P&L: saved=${receipt.pnl.cost_saved_usd:.5f}  "
-        f"spend=${receipt.pnl.safety_spend_usd:.5f}  net=${receipt.pnl.net_usd:.5f}"
+        f"spend=${receipt.pnl.safety_spend_usd:.5f}  "
+        f"net benefit=${-receipt.pnl.net_usd:.5f}"
     )
     print(f"  receipt hash: {receipt.hash_self[:16]}...  (prev {receipt.hash_prev[:8] or 'genesis'})")
 
@@ -147,7 +148,10 @@ def main() -> None:
     print("Oversight P&L (running totals across the workload)")
     print(f"  cost saved:   ${totals.cost_saved_usd:.5f}")
     print(f"  safety spend: ${totals.safety_spend_usd:.5f}")
-    print(f"  net:          ${totals.net_usd:.5f}  " + ("(self-funding)" if totals.net_usd < 0 else ""))
+    print(
+        f"  net benefit:  ${-totals.net_usd:.5f}  "
+        + ("(self-funding)" if totals.net_usd < 0 else "(cost > savings)")
+    )
     print(f"\nFlight recorder: {len(recorder.receipts)} receipts, hash chain valid = {recorder.verify_chain()}")
 
 

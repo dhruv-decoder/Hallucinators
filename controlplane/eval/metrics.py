@@ -96,7 +96,12 @@ def bootstrap_f1_ci(
     fp = (~st & sp).sum(axis=1)
     fn = (st & ~sp).sum(axis=1)
     denom = 2 * tp + fp + fn
-    f1 = np.where(denom > 0, 2 * tp / denom, 0.0)
+    f1 = np.divide(
+        2 * tp,
+        denom,
+        out=np.zeros_like(denom, dtype=float),
+        where=denom > 0,
+    )
     lo, hi = np.quantile(f1, [alpha / 2, 1 - alpha / 2])
     return (float(lo), float(hi))
 

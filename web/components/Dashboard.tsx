@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Activity, BarChart3, Boxes, Check, ChevronsUpDown, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Info, LayoutGrid, LifeBuoy, LogOut, MousePointerClick,
+  Activity, BarChart3, Boxes, Check, ChevronsUpDown, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Inbox, Info, LayoutGrid, LifeBuoy, LogOut, MousePointerClick,
   Play, Plus, Radio, RotateCcw, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
 import { Action, AgentReceipt, api, BenchmarkEval, BenchmarkStrategy, ControlRow, GeneratedPolicy, PlaygroundResult, Receipt, RuntimeObservability, Scenario, StreamGuardCase, Summary, UseCaseSpec, VoIContrast } from "@/lib/api";
@@ -11,13 +11,14 @@ import { Badge, BrandMark, Card, EmptyState, Kpi, ProgressBar, toast, Toaster } 
 import { QuadrantChart, Sparkline } from "./charts";
 import { ThemeToggle } from "./theme";
 
-type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "quadrant" | "pnl" | "voi" | "benchmarks" | "benchmark" | "runtime" | "replay" | "streamguard" | "agents" | "compliance" | "detectors" | "api" | "help";
+type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "review" | "quadrant" | "pnl" | "voi" | "benchmarks" | "benchmark" | "runtime" | "replay" | "streamguard" | "agents" | "compliance" | "detectors" | "api" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
   { group: "Set up", items: [
     { id: "playground", label: "Playground", icon: FlaskConical },
     { id: "configure", label: "Use-case setup", icon: SlidersHorizontal } ] },
   { group: "Monitor", items: [
     { id: "overview", label: "Overview", icon: LayoutGrid }, { id: "feed", label: "Live feed", icon: Rss },
+    { id: "review", label: "Review queue", icon: Inbox },
     { id: "quadrant", label: "Confidently-wrong", icon: Crosshair }, { id: "pnl", label: "Oversight P&L", icon: Wallet } ] },
   { group: "Prove", items: [
     { id: "voi", label: "VoI contrast", icon: GitCompareArrows }, { id: "benchmarks", label: "Public benchmarks", icon: BarChart3 },
@@ -34,6 +35,7 @@ const TITLES: Record<View, [string, string]> = {
   configure: ["Configure for your use case", "Tune oversight to your traffic, latency, risk, and data, the policy is generated for you"],
   overview: ["Overview", "One verdict across performance, cost, and responsibility, in real time"],
   feed: ["Live feed", "Every decision, as it happens, the audit trail behind each response"],
+  review: ["Human review queue", "The uncertain, high-stakes tail held back for a person, each verdict retrains the detectors"],
   quadrant: ["Confidently-wrong map", "The danger zone we exist to catch: sure of itself and wrong"],
   pnl: ["Oversight P&L", "Safer AND cheaper, a negative price tag, measured not asserted"],
   voi: ["VoI contrast", "Same engine, same policy: a safe response skips the expensive check, an uncertain one buys it"],
@@ -106,6 +108,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
   const dismissGuide = () => { setGuide(false); try { localStorage.setItem("cp-guide", "seen"); } catch {} };
 
   const incidents = (summary?.by_action?.block ?? 0) + (summary?.by_action?.escalate ?? 0);
+  const reviewCount = receipts.filter((r) => { const [, p] = worstAxis(r); return r.action === "escalate" || r.action === "block" || p >= 0.5; }).length;
 
   return (
     <div className="grid min-h-screen grid-cols-[232px_1fr] max-lg:grid-cols-[64px_1fr]">
@@ -124,6 +127,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
                 <div key={it.id} onClick={() => setView(it.id)} className={`navitem ${view === it.id ? "navitem-active" : ""}`}>
                   <Icon size={16} className="opacity-90" /><span className="max-lg:hidden">{it.label}</span>
                   {it.id === "feed" && incidents > 0 && <span className="ml-auto rounded-full bg-block px-1.5 text-[10px] font-bold text-[#180a0a] max-lg:hidden">{incidents}</span>}
+                  {it.id === "review" && reviewCount > 0 && <span className="ml-auto rounded-full bg-escalate px-1.5 text-[10px] font-bold text-[#180a0a] max-lg:hidden">{reviewCount}</span>}
                 </div>
               );
             })}
@@ -169,7 +173,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
           </button>
         </header>
 
-        <main className="mx-auto w-full max-w-[1560px] p-6 2xl:max-w-[2040px] 2xl:px-10 2xl:py-8">
+        <main className="mx-auto w-full max-w-[1560px] p-6 2xl:max-w-[1720px] 2xl:px-8 2xl:py-8">
           {guide && <Onboard onDismiss={dismissGuide} onSend={sendTraffic} busy={busy} />}
           <div key={view} className="viewfade">
             {view === "playground" && <Playground policies={summary?.policies} onDecision={() => api.summary().then(setSummary)} onOpen={setDrawer} />}
@@ -177,6 +181,7 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             {view === "configure" && <Configurator onApplied={() => { api.summary().then(setSummary); setView("overview"); }} />}
             {view === "overview" && <Overview summary={summary} net={net} receipts={receipts} onOpen={setDrawer} onSend={sendTraffic} busy={busy} />}
             {view === "feed" && <Feed receipts={receipts} onOpen={setDrawer} />}
+            {view === "review" && <ReviewQueue receipts={receipts} onOpen={setDrawer} />}
             {view === "quadrant" && <Quadrant receipts={receipts} />}
             {view === "pnl" && <PnlView summary={summary} net={net} />}
             {view === "voi" && <VoIContrastView />}
@@ -529,6 +534,47 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
         <h4 className="mb-2 text-[13px] text-accent">What am I looking at?</h4>
         <p className="text-sm text-muted">ControlPlane sits in front of any model. For every response it decides <b className="text-ink">how much verification that response is worth</b>, buying the cheapest signal that could change the decision first, and letting cost-axis savings pay for the safety checks. Most responses clear instantly at the free tier; only the uncertain, high-stakes tail climbs to costly checks or a human. New here? Open <b className="text-ink">Getting started</b>.</p>
       </div>
+    </div>
+  );
+}
+
+function ReviewQueue({ receipts, onOpen }: { receipts: Receipt[]; onOpen: (r: Receipt) => void }) {
+  // The human-oversight worklist (EU AI Act Art. 14): the tail the system deliberately holds for a person —
+  // escalations, blocks, and anything with high residual risk — sorted worst-first. Opening a row shows the
+  // full VoI trace and the thumbs up/down that records a labelled verdict and refits the detectors.
+  const queued = receipts
+    .map((r) => { const [ax, p] = worstAxis(r); return { r, ax, p }; })
+    .filter(({ r, p }) => r.action === "escalate" || r.action === "block" || p >= 0.5)
+    .sort((a, b) => b.p - a.p);
+  const reason = (r: Receipt, p: number) =>
+    r.action === "escalate" ? "Escalated for a human decision"
+    : r.action === "block" ? "Blocked, confirm the action"
+    : `High residual risk (p_fail ${p.toFixed(2)})`;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="kpi-grid">
+        <Kpi label="Awaiting review" value={queued.length} tone={queued.length > 0 ? "bad" : "good"} foot="held for a human" />
+        <Kpi label="Escalations" value={queued.filter((q) => q.r.action === "escalate").length} foot="to a person" />
+        <Kpi label="Blocks" value={queued.filter((q) => q.r.action === "block").length} foot="unsafe / leaks" />
+      </div>
+      <Card desc="The uncertain, high-stakes tail the system holds back for a person: escalations, blocks, and any decision with high residual risk. Open one to see its full value-of-information trace and record a verdict, which retrains the detectors. This is the human-in-the-loop control the EU AI Act asks for.">
+        {queued.length === 0 ? (
+          <EmptyState icon={Inbox} title="Nothing waiting for review" hint="Escalations, blocks, and high-risk decisions land here for a human to confirm. Send demo traffic (or run the Playground) to populate the queue." />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {queued.slice(0, 200).map(({ r, ax, p }) => (
+              <div key={r.request_id} onClick={() => onOpen(r)} className="grid cursor-pointer grid-cols-[104px_1fr_auto] items-center gap-3 rounded-[10px] border border-line bg-panel-2 px-3 py-2.5 transition hover:translate-x-0.5 hover:border-accent">
+                <Badge action={r.action} />
+                <div className="min-w-0">
+                  <div className="truncate text-sm">{reason(r, p)}</div>
+                  <div className="truncate font-mono text-[11px] text-faint">{(r.use_case || "").replace("_", " ")} · {ax || "-"} {p.toFixed(2)} · {r.stopping_reason} · {r.request_id}</div>
+                </div>
+                <button className="btn text-xs">review →</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

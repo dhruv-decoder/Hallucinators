@@ -13,3 +13,8 @@ services:
         value: "1"
       - key: CONTROLPLANE_WARMUP
         value: "1"
+      # Auto-generate a strong JWT signing secret so auth is secure by default (no dev fallback in prod).
+      # The auth + per-workspace stores live on the ephemeral disk here, so accounts reset on redeploy; the
+      # demo account (demo@controlplane.ai / demo1234) is re-seeded on boot. Mount a disk to persist them.
+      - key: CONTROLPLANE_AUTH_SECRET
+        generateValue: true

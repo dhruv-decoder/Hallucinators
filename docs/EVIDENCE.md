@@ -154,17 +154,3 @@ Local cascade (T2 judge excluded — it fires only on the tail), N=1,500 on a la
 **added latency p50 0.12 ms / p95 0.16 ms / p99 0.33 ms**, **~7,100 req/s**, 100% cleared at T0. At 50k
 interactions/week this extrapolates to a net-negative P&L (savings > safety spend) — labelled an extrapolation
 from simulated traffic at the sourced prices above, not production billing.
-
-## 4. R1 slide incidents — ✅ team-verified · paste the primary links before the video
-
-The three "2026 evidence" incidents from the Round-1 slides are **confirmed by the team**. They are beyond the
-assistant's knowledge cutoff, so it cannot independently verify them — but per the team they are real. **Action
-(P0 before the demo video / AI discussion):** paste the primary source URL next to each so a jury can click it.
-
-| Incident (as used in the pitch) | Status | Primary source (PASTE URL) |
-|---|---|---|
-| Meta Mar-2026 Sev-1 (agent advice exposed data to wrong engineers) | ✅ team-verified | `<add link>` |
-| Uber 2026 AI budget exhausted in ~4 months; power users ~$2k/mo | ✅ team-verified | `<add link>` |
-| Stanford Jun-2026 bias audit — 26% across 4M applications | ✅ team-verified | `<add link>` |
-
-Rule stays: in the Q&A a clickable primary source is worth far more than an assertion — fill the URLs in.

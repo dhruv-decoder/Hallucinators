@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-Short records of the decisions behind the engine, in context → decision → consequences form. These are
-the "why" questions the AI discussion will probe.
+Short records of the decisions behind the engine, in context → decision → consequences form. These answer
+the "why" questions a technical reviewer will probe.
 
 ## ADR-0001 — Oversight is a value-of-information decision under a latency budget
 **Context.** Existing tools bolt a fixed verification step onto every response (a safety tax) or only
@@ -20,7 +20,7 @@ both a hallucination and a privacy leak); acceptable for now, revisit if correla
 **Context.** Raw detector scores are not probabilities, but the VoI math needs probabilities.
 **Decision.** Learn a score→failure-rate map (Platt or isotonic via PAV), implemented without sklearn.
 **Consequences.** Honest expected-loss arithmetic and a reliability diagram for skeptics; every step is
-explainable in the AI discussion. Slightly more code than importing a library, which is the point.
+explainable from first principles. Slightly more code than importing a library, which is the point.
 
 ## ADR-0004 — The cost axis is the funding side, handled separately from failure-loss VoI
 **Context.** "Cost" is not a harmful failure with a probability; it is waste with a savings opportunity.

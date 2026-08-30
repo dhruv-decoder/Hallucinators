@@ -107,10 +107,16 @@ make web-build       # (needs Node) builds the Next.js UI, served by FastAPI as 
 make serve           # starts The Tower on http://127.0.0.1:8000, open it in a browser
 ```
 
-Open **http://127.0.0.1:8000**, click **Launch dashboard**, and start in the **Playground**: type any prompt
-and watch a real model answer while ControlPlane oversees it live. The dashboard has views for the live feed,
-the confidently-wrong map, the P&L with an enterprise projection, a latency and scale benchmark, the risk
-guarantee, What-If replay, agent oversight, and the compliance pack.
+Open **http://127.0.0.1:8000**, click **Launch dashboard**, sign in (or use the seeded demo account / continue
+as guest), and start in the **Playground**: type any prompt and watch a real model answer while ControlPlane
+oversees it live. The dashboard has views for the live feed, the confidently-wrong map, the self-funding P&L
+with an enterprise projection, the VoI skip-vs-buy contrast, the public benchmark results (Fixed HHEM vs
+ControlPlane on HaluEval), a latency and scale benchmark, the risk guarantee, What-If replay, the StreamGuard
+mid-stream abort, agent oversight, the compliance pack, and a drop-in API / integration guide.
+
+**Multi-tenant by design.** Sign-up / login is built in, and each **workspace** (support bot, internal copilot,
+agentic ops, …) is fully isolated: its own policies, hash-chained audit log, and oversight P&L never bleed
+across use cases. Switch workspaces from the header; a seeded demo account lets judges log in instantly.
 
 **Turn on the real model and the extras (all optional):**
 
@@ -151,7 +157,7 @@ controlplane/         # the Python package
   demo/               # end-to-end runnable demos
 web/                  # Next.js + TypeScript + Tailwind product frontend (served by FastAPI as one service)
 tests/                # unit tests (152)
-docs/                 # WALKTHROUGH (start here), ARCHITECTURE, JUDGE, DECISIONS, EVIDENCE, DEMO, DEPLOY
+docs/                 # WALKTHROUGH (start here), ARCHITECTURE, DECISIONS, EVIDENCE, DEMO, DEPLOY
 ```
 
 ## Documentation
@@ -159,7 +165,6 @@ docs/                 # WALKTHROUGH (start here), ARCHITECTURE, JUDGE, DECISIONS
 - [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — start here: every component and the user flow, with diagrams.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the engine works, including the VoI derivation.
 - [docs/EVIDENCE.md](docs/EVIDENCE.md) — every external claim, with its primary source.
-- [docs/JUDGE.md](docs/JUDGE.md) — the Round-2 brief decoded into a rubric we self-score against.
 - [docs/DECISIONS.md](docs/DECISIONS.md) — architecture decision records.
 
 ## Run on Windows (VS Code)

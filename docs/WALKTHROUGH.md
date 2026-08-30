@@ -250,7 +250,7 @@ requests a week* and it's a line item that pays for itself.
 2. **Cache hit.** The second time someone asks "What are your support hours?", the normalized prompt matches
    a stored one → we book the **entire** model call as saved. (`SemanticCacheDetector`.)
 
-> **Honesty note (important for the jury):** these `p_fail` and savings are **ControlPlane's own estimates**
+> **Honesty note:** these `p_fail` and savings are **ControlPlane's own estimates**
 > using placeholder prices (`pnl/pricing.py`) — not measured ground truth or verified provider prices. The
 > *labelled* accuracy numbers come from a separate eval harness (Section 9); real prices go in
 > `docs/EVIDENCE.md` before any figure is published. We always say which is which.
@@ -414,5 +414,5 @@ Run `make serve` + `make traffic` and you'll see exactly this, live.
 
 ---
 
-*If you can explain Sections 4 and 6 from memory, you can defend this project in the AI discussion. Those two
-— the VoI stopping rule and self-funding P&L — are the whole thesis; everything else supports them.*
+*Sections 4 and 6 — the VoI stopping rule and the self-funding P&L — are the whole thesis; everything else
+supports them.*

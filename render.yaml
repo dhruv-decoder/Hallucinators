@@ -18,3 +18,11 @@ services:
       # demo account (demo@controlplane.ai / demo1234) is re-seeded on boot. Mount a disk to persist them.
       - key: CONTROLPLANE_AUTH_SECRET
         generateValue: true
+      # Optional: paste a free Groq key in the Render dashboard to light up the live judge tier (and the
+      # gpt-oss-safeguard content-safety model) on the deployed URL. Left blank here so no secret is committed;
+      # the judge reads it directly, so it works even with FORCE_SIM. HHEM groundedness stays heuristic on the
+      # free image (it needs the heavy [ml] extra). Detectors & models will then show judge: groq.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CONTROLPLANE_USE_GROQ_SAFETY
+        value: "1"

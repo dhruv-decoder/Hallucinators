@@ -5,8 +5,13 @@ export const ACTION_COLOR: Record<Action, string> = {
 };
 export const AXIS_COLOR: Record<Axis, string> = { performance: "#58a6ff", cost: "#3fb950", responsibility: "#f85149" };
 
-export const usd = (n: number) =>
-  (n < 0 ? "-$" : "$") + Math.abs(n).toFixed(n !== 0 && Math.abs(n) < 0.01 ? 5 : 2);
+// Adaptive precision: the demo's per-run P&L is a few cents, so show enough significant digits to see it move
+// ($0.013, not a flat $0.01). Dollar-scale figures (projections) stay at 2 decimals.
+export const usd = (n: number) => {
+  const a = Math.abs(n);
+  const dp = a === 0 ? 2 : a < 0.001 ? 5 : a < 1 ? 3 : 2;
+  return (n < 0 ? "-$" : "$") + a.toFixed(dp);
+};
 
 export const fmtEta = (s: number | null) =>
   s == null ? "-" : s < 1 ? "<1s" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;

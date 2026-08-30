@@ -9,7 +9,7 @@ biased judgement about a person is its own harm. This T0 detector flags the dang
 This is an honest, specific heuristic, not a fairness oracle. Its documented upgrade is **output-level
 counterfactual demographic testing** (swap the protected attribute, re-query the model, and measure whether
 the decision / sentiment / refusal changes -- BiasGuard-style), which needs the model in the loop and so lives
-in the proxy/eval layer; and a reasoning bias-detection model on the tail. See docs/ASSESSMENT.md section 5.2.
+in the proxy/eval layer; and a reasoning bias-detection model on the tail.
 """
 
 from __future__ import annotations

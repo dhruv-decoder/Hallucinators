@@ -12,7 +12,7 @@ They need the optional ``datasets`` library (``pip install datasets``) and a one
 Hugging Face hub; nothing is bundled, so the repo stays light and license-clean. If the download or library is
 unavailable the loader raises a clear error and the caller falls back to the synthetic set.
 
-Sources: HaluEval (arXiv:2305.11747), RAGTruth (arXiv:2401.00396). See docs/EVIDENCE.md.
+Sources: HaluEval (arXiv:2305.11747), RAGTruth (arXiv:2401.00396).
 """
 
 from __future__ import annotations

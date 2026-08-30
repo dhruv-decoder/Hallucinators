@@ -1,7 +1,7 @@
 """Model pricing used to compute the Oversight P&L.
 
 Prices are per 1,000 tokens, as ``(input_price, output_price)`` in USD, sourced from public provider pricing
-as of **August 2026** (see ``docs/EVIDENCE.md`` for the links). They are list prices, not negotiated
+as of **August 2026**. They are list prices, not negotiated
 enterprise rates, and they move often -- treat the P&L as an order-of-magnitude, reproducible estimate, not a
 billing statement. The route-down savings the ledger books come straight from the flagship-vs-cheaper gap
 below, so they track real provider economics.
@@ -19,7 +19,7 @@ class Pricing:
     #: appetite escalates more and therefore costs more human time. Tune per organisation.
     HUMAN_REVIEW_USD: float = 1.50
 
-    #: (input, output) USD per 1k tokens. Sourced Aug 2026 -- see docs/EVIDENCE.md.
+    #: (input, output) USD per 1k tokens. Sourced Aug 2026.
     DEFAULT_PRICES: dict[str, tuple[float, float]] = {
         # OpenAI
         "gpt-4o": (0.0025, 0.010),
@@ -31,7 +31,7 @@ class Pricing:
         "claude-sonnet-5": (0.002, 0.010),
         "claude-haiku-4.5": (0.001, 0.005),
         # Groq (OpenAI-compatible, used by the live Playground). Approximate provider list prices -- verify
-        # in docs/EVIDENCE.md before quoting. The free tier bills $0; these list rates are what a paying
+        # before quoting. The free tier bills $0; these list rates are what a paying
         # deployment would pay, so the P&L reflects real economics rather than $0.
         "openai/gpt-oss-120b": (0.00015, 0.00060),
         "openai/gpt-oss-20b": (0.00005, 0.00020),

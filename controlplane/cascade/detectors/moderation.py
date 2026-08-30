@@ -9,7 +9,7 @@ It is **opt-in** (``CONTROLPLANE_USE_GROQ_SAFETY=1``) on purpose: responsibility
 so the VoI rule would want to verify it on almost every response, and the free Groq tier is rate-limited
 (30 req/min). The always-on heuristic stays as the default guard; enable this to add a real model on the tail.
 (PromptGuard-2 is also on Groq for injection, but its classifier endpoint caps max_tokens at 512 and returns a
-different shape; it is left as a documented upgrade -- see docs/ASSESSMENT.md section 5.3.)
+different shape; it is left as a documented upgrade)
 """
 
 from __future__ import annotations

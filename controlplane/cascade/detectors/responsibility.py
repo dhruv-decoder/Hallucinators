@@ -2,7 +2,7 @@
 
 Today: a regex/heuristic PII detector (T0). Upgrade path: GLiNER zero-shot entity detection and
 Presidio (T1) for recall on messy entities, and a safety/toxicity classifier (T1) plus a Llama-Guard
-class model (T2) for unsafe content. See docs/PLAN.md section 8.
+class model (T2) for unsafe content.
 """
 
 from __future__ import annotations

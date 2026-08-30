@@ -620,7 +620,7 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
       <Card title="Cumulative net"><Sparkline series={net} /></Card>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4">
         <h4 className="mb-2 text-[13px] text-accent">Why can oversight be cheaper than nothing?</h4>
-        <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer: routing an easy question to a small model, or serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings win, the automated net goes below zero, meaning safety <i>and</i> a lower bill. Human review of escalations is a separate, deliberate cost. Prices are sourced (docs/EVIDENCE.md).</p>
+        <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer: routing an easy question to a small model, or serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings win, the automated net goes below zero, meaning safety <i>and</i> a lower bill. Human review of escalations is a separate, deliberate cost. Prices are published provider list prices.</p>
       </div>
     </div>
   );
@@ -1315,7 +1315,7 @@ function Detectors({ summary }: { summary: Summary | null }) {
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">{["tier", "axis", "detector", "upgrade path"].map((h) => <th key={h} className="border-b border-line p-2.5">{h}</th>)}</tr></thead>
           <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="border-b border-line p-2.5">{j === 2 && c.includes("(model)") ? <>{c.replace(" (model)", "")} <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] text-muted">model</span></> : c}</td>)}</tr>)}</tbody>
         </table>
-        <p className="mt-3 text-[12.5px] text-muted">On real HaluEval data the cheap lexical check scores F1 0.30; the VoI cascade climbing to HHEM on the uncertain tail reaches F1 0.76 (docs/EVIDENCE.md). Enable models with the <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px]">[ml]</span> extra or a judge backend (Groq/Ollama).</p>
+        <p className="mt-3 text-[12.5px] text-muted">On real HaluEval data the cheap lexical check scores F1 0.30; the VoI cascade climbing to HHEM on the uncertain tail reaches F1 0.76. Enable models with the <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px]">[ml]</span> extra or a judge backend (Groq/Ollama).</p>
       </Card>
       <Card title="Learned detector informativeness" desc="The runtime η values determine how much a detector can be expected to reduce uncertainty. The source indicates whether a learned offline artifact is loaded.">
         <div className="mb-3 text-xs text-muted">{info?.loaded ? `Loaded from ${info.artifact}` : "Using manual detector priors (no offline artifact loaded)."}</div>

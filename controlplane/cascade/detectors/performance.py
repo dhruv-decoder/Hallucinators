@@ -9,7 +9,7 @@ Today, three lightweight signals:
 
 Upgrade path: groundedness -> HHEM-2.1 / MiniCheck; self-consistency -> semantic entropy via an NLI or
 embedding model; overconfidence -> white-box Semantic-Entropy Probes on a locally served model. Each
-heuristic here is a faithful but cruder stand-in, documented as such. See docs/PLAN.md section 8.
+heuristic here is a faithful but cruder stand-in, documented as such.
 """
 
 from __future__ import annotations

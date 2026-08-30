@@ -6,7 +6,7 @@ as savings. Those savings are what subsidise the performance and responsibility 
 
 Today: a model-overkill heuristic and an exact-normalised semantic cache (T0). Upgrade path: a learned
 router (RouteLLM class) and an embedding-based near-duplicate cache. The ledger, not the detector, owns
-pricing, so savings are computed in one place. See docs/PLAN.md section 8.
+pricing, so savings are computed in one place.
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ It is a real model but a light one -- it runs on CPU in <600 MB and ~1.5 s for a
 sensible **T1** check the VoI rule can climb to when the cheap T0 signals leave the axis uncertain. It is
 optional (the ``[ml]`` extra pulls in ``transformers`` + ``torch``); the model is loaded lazily on first use
 and cached process-wide, and the engine falls back to the lexical heuristic when it is not installed. Model:
-``vectara/hallucination_evaluation_model`` (see docs/EVIDENCE.md).
+``vectara/hallucination_evaluation_model``.
 """
 
 from __future__ import annotations

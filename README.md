@@ -1,124 +1,143 @@
-# ControlPlane
+<p align="center">
+  <img src="web/public/logo.png" alt="ControlPlane" width="92" />
+</p>
 
-**Real-time oversight for enterprise AI, run as one economic decision.**
+<h1 align="center">ControlPlane · The Tower</h1>
 
-Enterprises run generative AI across many use cases at once, and every response carries three coupled risks:
-it can be **wrong**, it can be **needlessly expensive**, and it can be **unsafe** (biased, leaking data, or
-non-compliant). Today those are handled by separate tools, after the fact, with separate verdicts.
+<p align="center"><b>Real-time oversight for enterprise AI — run as one economic decision.</b></p>
 
-ControlPlane collapses them into a single decision. For every model response it asks: *how much is it worth to
-verify this one?* It buys the cheapest check that could actually change the outcome, skips checks that cannot,
-and lets the money saved on the cost axis help pay for the safety checks. One layer, three axes, one verdict,
-with a tamper-evident receipt behind every call.
-
-> Performance (is it wrong, or confidently wrong?) · Cost (is this the cheapest path to this quality?) ·
-> Responsibility (is it biased, unsafe, or leaking data?)
-
-Point any OpenAI client at it with a one-line `base_url` swap. Runs fully offline on a laptop with no keys, or
-against a real model (Groq / OpenAI / local Ollama) when a key is set.
+<p align="center">
+  <b>152 tests passing</b> · <b>offline-first</b> · <b>OpenAI-compatible gateway</b> · <b>multi-tenant</b> · MIT
+</p>
 
 ---
 
-## What makes it different
+Enterprises run generative AI across many use cases at once, and every response carries three coupled risks: it
+can be **wrong**, it can be **needlessly expensive**, and it can be **unsafe** (biased, leaking data, or
+non-compliant). Today those are handled by separate tools, after the fact, with separate verdicts.
 
-Most parts here are commodities any competent team can assemble (LLM-as-judge, PII detection, model routing,
-audit logging). The differentiation is the **control mechanism** that ties them together:
+**ControlPlane collapses them into a single decision.** It sits in front of any model as a drop-in gateway, and
+for every response it asks one question: *how much is it worth to verify this one?* It buys the cheapest check
+that could actually change the outcome, skips the checks that cannot, and lets the money saved on the cost axis
+pay for the safety checks — so oversight becomes an asset, not a tax.
+
+> **Performance** (is it wrong, or confidently wrong?) · **Cost** (is this the cheapest path to this quality?) ·
+> **Responsibility** (is it biased, unsafe, or leaking data?) — one layer, three coupled axes, one verdict, with
+> a tamper-evident receipt behind every call.
+
+Point any OpenAI client at it with a one-line `base_url` swap. It runs fully offline on a laptop with no keys,
+and lights up a real model (Groq / OpenAI / local Ollama) the moment a key is set.
+
+## Why it stands out
+
+The individual parts are commodities any capable team can assemble (LLM-as-judge, PII detection, model routing,
+audit logging). Our edge is the **control mechanism** that turns them into one adaptive, economically-honest system:
 
 1. **Value-of-Information (VoI) gated oversight.** Per response, the engine computes the expected reduction in
-   loss a check would buy versus its own cost and latency, and only then decides to run it. Checks are
-   genuinely skipped or bought per input. This is adaptive oversight as a decision process, not a fixed pipeline.
+   loss a check would buy versus its own dollar-and-latency cost, and *only then* decides to run it. Checks are
+   genuinely bought or skipped per input — adaptive oversight as a decision process, not a fixed pipeline.
 2. **A statistical guarantee, not just a score.** Conformal risk control certifies a finite-sample bound on the
-   escaped-failure rate (missed failures ≤ α) on labelled data. No listed competitor productizes a guarantee.
-3. **Self-funding oversight.** Savings from routing simple prompts to cheaper models and serving repeats from
-   cache offset the safety spend, so safety stops being a pure cost centre.
+   escaped-failure rate (missed failures ≤ α) on labelled data. It doesn't just *score* risk — it *controls* it.
+3. **Self-funding oversight.** Savings from routing simple prompts to smaller models and serving repeats from
+   cache offset the safety spend, so the oversight ledger can run net-negative: safer **and** cheaper.
+4. **Production-shaped.** Multi-tenant workspaces with real auth, hash-chained audit, streaming mid-stream abort,
+   agentic oversight, a compliance pack, and a live human-feedback loop — not a notebook, a product.
+
+## Highlights
+
+- **The Tower** — an OpenAI-compatible gateway; every response is overseen inline, streaming included.
+- **VoI cascade** — free heuristics (T0) → cheap models (self-consistency, HHEM-2.1) → an LLM judge, each tier
+  bought only when the value beats the cost.
+- **Public benchmark evidence** — Fixed-HHEM vs ControlPlane on real HaluEval, loaded live from your own run.
+- **Risk guarantee** — conformal certificate on the escaped-failure rate.
+- **Self-funding P&L** — an itemised ledger of savings (route-down · cache · early-abort) vs safety spend.
+- **StreamGuard** — predicts and aborts a PII leak mid-stream, before the tokens leave.
+- **Agentic oversight** — watches a multi-step agent, catches a compounding hallucination and its loop, aborts.
+- **Multi-tenant** — sign-up / login and fully isolated workspaces per use case (policies, audit, P&L).
+- **Compliance pack** — every decision mapped to EU AI Act / ISO 42001 / NIST AI RMF, exportable.
+- **Live feedback loop** — a thumbs-up/down on any receipt refits detector calibration on the fly.
 
 ## How it works
 
 ```mermaid
-flowchart LR
-    C[Any OpenAI client<br/>base_url swap] --> P[The Tower<br/>OpenAI-compatible proxy]
-    P --> U[Model call<br/>Groq / OpenAI / simulated]
-    U --> O[Oversight pipeline]
-    subgraph O[Oversight pipeline]
+flowchart TB
+    Client["Any OpenAI client<br/>one-line base_url swap"] --> Tower["The Tower<br/>OpenAI-compatible gateway"]
+    Tower --> Model["Model call<br/>Groq · OpenAI · Ollama · simulated"]
+    Model --> Cascade
+
+    subgraph Cascade["Value-of-Information cascade (per response)"]
       direction TB
-      T[Thermostat sets scrutiny] --> E[Cascade engine]
-      E --> V{VoI: is the next<br/>check worth it?}
-      V -- no --> S[Stop and decide]
-      V -- yes --> H[Climb a tier:<br/>self-consistency / HHEM / LLM-judge]
-      H --> V
-      S --> D[Action: pass / annotate /<br/>auto-repair / escalate / block]
+      T0["T0 · free heuristics<br/>overconfidence · groundedness · PII · prompt-injection"]
+      Q{"Would the next check<br/>change the decision?"}
+      Buy["Climb a tier<br/>self-consistency → HHEM-2.1 → LLM judge"]
+      Act["Verdict → action<br/>pass · annotate · auto-repair · escalate · block"]
+      T0 --> Q
+      Q -- "no · not worth its cost" --> Act
+      Q -- "yes · buy the check" --> Buy
+      Buy --> Q
     end
-    O --> L[P&L ledger<br/>saved vs spend]
-    O --> R[Hash-chained receipt]
-    D --> RESP[Response + oversight block]
-    R -.human override.-> FB[Feedback loop<br/>refits calibration]
-    FB -.-> E
+
+    Cascade --> PnL["Self-funding P&L<br/>cost saved vs safety spend"]
+    Cascade --> Receipt["Tamper-evident receipt<br/>SHA-256 hash chain + VoI trace"]
+    Act --> Resp["Overseen response<br/>+ streaming mid-stream abort"]
+    Receipt -. "human override" .-> FB["Feedback loop<br/>refits calibration live"]
+    FB -.-> Cascade
 ```
 
-A request hits **The Tower** (the OpenAI-compatible gateway). A **thermostat** sets a scrutiny level. The
-**cascade engine** runs cheap T0 heuristics on every axis, then consults the **VoI rule** for each heavier
-check and climbs only when it is worth buying. Per-axis calibrated probabilities combine into one verdict; the
-**decision layer** picks an action, with a **streaming mid-stream abort** that stops a leak before the tokens
-leave. The **P&L ledger** books cost saved vs safety spent; a **hash-chained receipt** records the full
-value-of-information trace. A human override on any receipt feeds the **feedback loop**, which refits detector
-calibration live.
+A request hits **The Tower**. A **thermostat** sets a scrutiny level from recent risk. The **cascade engine**
+runs cheap T0 heuristics on every axis, then consults the **VoI rule** for each heavier check and climbs a tier
+only when it is worth buying. Per-axis calibrated probabilities combine into one verdict; the **decision layer**
+picks an action, with a **streaming mid-stream abort** that stops a leak before the tokens leave. The **P&L
+ledger** books cost saved vs safety spent; a **hash-chained receipt** records the full value-of-information
+trace. A human override on any receipt feeds the **feedback loop**, which refits detector calibration live.
 
-## What is real, and what is measured
+## What's real, and reproducible
 
-> Status: **working prototype, 152 tests, lint-clean, offline-first.**
+> **Working product · 152 tests · lint-clean · offline-first.** Nothing below is a mock.
 
-- **VoI gating is real control.** Checks are genuinely skipped or run per input; the receipt trace shows
-  RAN/SKIP with the VoI-vs-cost numbers, and flipping the policy changes which checks run.
-- **The proxy is real.** Live `/v1/chat/completions` (streaming and non-streaming); a one-line `base_url` swap
+- **VoI gating is real control.** Checks are genuinely bought or skipped per input; the receipt trace shows
+  RAN/SKIP with the VoI-vs-cost numbers, and switching the policy changes which checks run.
+- **The gateway is real.** Live `/v1/chat/completions`, streaming and non-streaming — a one-line `base_url` swap
   is all a client changes.
-- **Measured economics on the real model path.** With a Groq key, benign and arbitrary traffic runs on a real
-  model with measured token usage and cost, real route-down, and a real cache bypass. The planted risk
-  scenarios stay scripted so the guardrail demos fire reliably. Per-request economics are projected to the
-  brief's reference volume so the P&L is a meaningful figure, not a per-demo penny.
-- **Detection lift is measured on real data.** On HaluEval, a lexical groundedness check scores F1 ~0.30; the
-  VoI cascade climbing to **HHEM-2.1** only on the uncertain tail reaches F1 ~0.76, while roughly half of
-  traffic clears free at T0. See [docs/EVIDENCE.md](docs/EVIDENCE.md).
-- **Live probabilities are calibrated.** A Platt calibrator fitted offline on HaluEval (prior-corrected to a
-  realistic deployment base rate) is loaded at startup, so the VoI thresholds and the conformal guarantee run
-  on calibrated probabilities rather than raw detector scores.
-- **The feedback loop is live.** A thumbs up/down on any receipt records a labelled override; once a detector
-  has enough feedback its calibrator refits and hot-swaps into the running engine.
+- **Detection lift is measured on real data.** On HaluEval (500 labelled examples), gating **HHEM-2.1** with the
+  VoI rule reaches **F1 0.80 at the same recall (0.70)** as running HHEM on everything (F1 0.76), with a much
+  lower false-positive rate (**0.05 vs 0.15**) while buying **~55% fewer expensive checks** (227 vs 500), and
+  roughly **half of traffic clears free at T0**. Reproduce it yourself with `make eval-aggregate`.
+- **Economics are measured on the real path.** With a Groq key, real traffic runs on a real model with measured
+  token usage and cost, real route-down, and a real cache bypass; the per-request result is projected to
+  enterprise volume so the P&L is a meaningful figure. Prices are published provider list rates.
+- **Probabilities are calibrated.** A Platt calibrator fitted offline on HaluEval (prior-corrected to a realistic
+  base rate) loads at startup, so the VoI thresholds and the conformal guarantee run on calibrated probabilities.
+- **The guarantee is real.** Conformal risk control certifies the escaped-failure bound on labelled data.
 - **Everything is auditable.** Every decision is a SHA-256 hash-chained receipt with a verify endpoint and
   durable SQLite persistence.
 
-We state boundaries plainly: by default the demo upstream is simulated and the dollar economics are estimated
-on the *mechanism*; with a Groq key the real path makes them measured. The agent trajectory is scripted (the
-auditor logic is real). See [docs/EVIDENCE.md](docs/EVIDENCE.md) for every number's source.
+We're precise about scope, because credibility is the point: the default upstream is a simulated
+failure-injecting model (so the guardrail demos always fire), and a Groq key flips the same path to a real
+model. The agent trajectory is a scripted scenario; the auditor that judges it is real.
 
-## Run it
+## Quickstart
 
 ```bash
 make install         # creates .venv and installs the core engine + dev tools
-make test            # unit tests for the VoI math, calibration, P&L, replay, and the proxy
+make test            # 152 unit tests: VoI math, calibration, P&L, replay, and the proxy
 make demo            # runs sample requests through the cascade and prints receipts + a P&L summary
-make whatif          # re-runs a workload under strict/balanced/lenient/off (the risk-vs-cost frontier)
+make whatif          # re-runs a workload under strict / balanced / lenient / off (the risk-vs-cost frontier)
 ```
 
-**See the whole product live (The Tower + Control-Tower dashboard):**
+**Run the whole product live (The Tower + the Control-Tower dashboard, one service):**
 
 ```bash
 make install-serve   # adds the proxy deps (FastAPI, uvicorn, httpx)
-make web-build       # (needs Node) builds the Next.js UI, served by FastAPI as ONE service
-make serve           # starts The Tower on http://127.0.0.1:8000, open it in a browser
+make web-build       # (needs Node) builds the Next.js UI, served by FastAPI as ONE origin
+make serve           # starts The Tower on http://127.0.0.1:8000
 ```
 
-Open **http://127.0.0.1:8000**, click **Launch dashboard**, sign in (or use the seeded demo account / continue
-as guest), and start in the **Playground**: type any prompt and watch a real model answer while ControlPlane
-oversees it live. The dashboard has views for the live feed, the confidently-wrong map, the self-funding P&L
-with an enterprise projection, the VoI skip-vs-buy contrast, the public benchmark results (Fixed HHEM vs
-ControlPlane on HaluEval), a latency and scale benchmark, the risk guarantee, What-If replay, the StreamGuard
-mid-stream abort, agent oversight, the compliance pack, and a drop-in API / integration guide.
+Open **http://127.0.0.1:8000**, click **Launch dashboard**, and either use the seeded demo account
+(`demo@controlplane.ai` / `demo1234`), sign up, or continue as guest. Start in the **Playground**: type any
+prompt and watch a real model answer while ControlPlane oversees it live.
 
-**Multi-tenant by design.** Sign-up / login is built in, and each **workspace** (support bot, internal copilot,
-agentic ops, …) is fully isolated: its own policies, hash-chained audit log, and oversight P&L never bleed
-across use cases. Switch workspaces from the header; a seeded demo account lets judges log in instantly.
-
-**Turn on the real model and the extras (all optional):**
+**Turn on the real model and the optional extras (all opt-in):**
 
 ```bash
 echo 'GROQ_API_KEY=your_free_groq_key' >> .env    # measured economics + a real Playground model
@@ -129,16 +148,49 @@ export CONTROLPLANE_SEMANTIC_CACHE=1               # enable near-duplicate cache
 
 `GET /healthz` shows what is live. For UI hot-reload during development, use `make web-dev` (UI on :3000).
 
-**Reproduce the evidence:**
+## Integrate in one line
 
-```bash
-pip install -e ".[eval]"                           # the datasets library
-make eval-real                                      # ControlPlane vs baselines on real HaluEval
-make eval-real ARGS="--models"                      # same, with HHEM-2.1 on the uncertain tail
-python -m controlplane.cascade.calibrate_live       # refit the live calibrator on HaluEval
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="anything")
+# every response now passes through the value-of-information cascade — streaming and tools still work
+resp = client.chat.completions.create(
+    model="openai/gpt-oss-20b",
+    messages=[{"role": "user", "content": "What is the refund window?"}],
+)
 ```
 
-Step-by-step test of every flow: [docs/TESTING.md](docs/TESTING.md).
+## The Control Tower (dashboard)
+
+A judge can drive the whole system from the browser:
+
+- **Set up** — *Playground* (a real model answered and overseen live) · *Use-case setup* (business facts →
+  tuned policy, pre-filled from the active workspace).
+- **Monitor** — *Overview*, *Live feed* (every signed receipt + its VoI trace), *Confidently-wrong* map,
+  *Oversight P&L* (itemised self-funding breakdown).
+- **Prove** — *VoI contrast* (skip-vs-buy on the same engine), *Public benchmarks* (Fixed-HHEM vs ControlPlane),
+  *Risk guarantee*, *Latency & scale*, *Runtime health*, *What-If replay*, *StreamGuard*, *Agent oversight*.
+- **Govern** — *Compliance* pack, *Detectors & models*, *API / Integration*.
+
+## Multi-tenant by design
+
+Login/signup is built in, and each **workspace** (support bot, internal copilot, agentic ops, …) is fully
+isolated — its own policies, hash-chained audit log, and oversight P&L never bleed across use cases. Switch
+workspaces from the header, or spin up a new one and tune its policy in a couple of clicks. The seeded demo
+account lets judges log in instantly, and the deploy auto-generates a strong JWT secret.
+
+## Reproduce the benchmarks
+
+```bash
+pip install -e ".[eval]"                                    # the datasets library
+make eval-real                                               # ControlPlane vs baselines on real HaluEval
+make eval-aggregate ARGS="--dataset halueval --limit 500"    # the head-to-head table (F1/FPR, latency, checks)
+python -m controlplane.cascade.calibrate_live                # refit the live calibrator on HaluEval
+```
+
+`make eval-aggregate` writes `artifacts/aggregate_eval.json`, which the dashboard's **Public benchmarks** page
+reads directly — the numbers on screen are the numbers from *your* run, never hardcoded.
 
 ## Repository layout
 
@@ -151,21 +203,13 @@ controlplane/         # the Python package
   replay/             # What-If / Replay simulator (the proof engine)
   feedback/           # human override -> recalibrate learning loop
   eval/               # labelled failure-injection harness + real HaluEval loader + metrics
-  agent/              # agentic trajectory oversight (per-step cascade + compounding/loop/waste checks)
+  agent/              # agentic trajectory oversight (per-step cascade + compounding / loop / waste checks)
   compliance/         # EU AI Act / ISO 42001 / NIST AI RMF evidence-pack generator
-  proxy/              # The Tower: OpenAI-compatible gateway + oversight service + benchmark + dashboard
+  proxy/              # The Tower: OpenAI-compatible gateway, oversight service, auth + workspaces, benchmark
   demo/               # end-to-end runnable demos
 web/                  # Next.js + TypeScript + Tailwind product frontend (served by FastAPI as one service)
 tests/                # unit tests (152)
-docs/                 # WALKTHROUGH (start here), ARCHITECTURE, DECISIONS, EVIDENCE, DEMO, DEPLOY
 ```
-
-## Documentation
-
-- [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — start here: every component and the user flow, with diagrams.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the engine works, including the VoI derivation.
-- [docs/EVIDENCE.md](docs/EVIDENCE.md) — every external claim, with its primary source.
-- [docs/DECISIONS.md](docs/DECISIONS.md) — architecture decision records.
 
 ## Run on Windows (VS Code)
 
@@ -188,6 +232,12 @@ docs/                 # WALKTHROUGH (start here), ARCHITECTURE, DECISIONS, EVIDE
    python -m controlplane.demo.run_demo
    ```
 
+## Acknowledgments
+
+Built by **Team Hallucinators** for the **Accenture Innovation Challenge 2026**. Developed with AI
+pair-programming assistance (Anthropic's **Claude Code**); all architecture, decisions, and results are the
+team's own and independently reproducible from this repository.
+
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

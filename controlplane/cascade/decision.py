@@ -3,7 +3,7 @@
 Given the engine's final per-axis failure probabilities and the active policy, choose one action:
 pass / annotate / escalate / block. This is a deliberately simple reference implementation so the core
 pipeline runs end to end; P2's policy engine replaces it with the full config-driven version (per
-use-case / geography / risk appetite) described in docs/PLAN.md.
+use-case / geography / risk appetite) described by the active policy profile.
 
 AUTO_REPAIR is intentionally not emitted yet: a faithful repair needs a corrective generation, which
 arrives with the model/proxy layer. Emitting it now would be a fabricated capability. Tracked as a TODO

@@ -3,7 +3,7 @@
 This is a reference implementation good enough to run the pipeline and the demo end to end: it keeps
 receipts in memory, maintains the hash chain, and optionally mirrors each receipt to a JSONL file. P2
 replaces it with the SQLite-backed flight recorder (with a query API for the UI) described in
-docs/PLAN.md and docs/WORKPLAN.md; the ``append`` / ``verify_chain`` interface stays the same.
+the reference design; the ``append`` / ``verify_chain`` interface stays the same.
 """
 
 from __future__ import annotations

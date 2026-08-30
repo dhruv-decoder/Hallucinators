@@ -17,6 +17,10 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY controlplane ./controlplane
+# Committed artifacts the running app reads: the public benchmark (Public benchmarks page), the real
+# conformal certificates (Risk guarantee), and the fitted calibration / informativeness. Without these the
+# deployed app 404s the benchmark and falls back to synthetic calibration.
+COPY artifacts ./artifacts
 RUN pip install --no-cache-dir -e ".[serve]"
 COPY --from=web /web/out ./web/out
 

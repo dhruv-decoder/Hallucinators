@@ -283,9 +283,12 @@ def test_semantic_cache_paraphrase_is_a_real_bypass(client: TestClient, monkeypa
 def test_conformal_endpoint_returns_certificates(client: TestClient) -> None:
     data = client.get("/v1/oversight/conformal").json()
     assert data["axis"] == "performance"
-    alphas = {c["alpha"] for c in data["certificates"]}
-    assert alphas == {0.30, 0.20, 0.10}
+    # Endpoint serves the committed real-data artifact when present (real_public_*), else a synthetic seed.
+    # Either way it returns a non-empty set of certificates at a few target alphas in (0, 1).
+    assert data.get("source")
+    assert data["certificates"], "expected at least one conformal certificate"
     for c in data["certificates"]:
+        assert 0.0 < c["alpha"] < 1.0
         assert "statement" in c and "valid" in c
 
 

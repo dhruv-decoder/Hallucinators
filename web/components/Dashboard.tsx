@@ -62,7 +62,9 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
     if (ids.current.has(r.request_id)) return;
     ids.current.add(r.request_id);
     setReceipts((prev) => [r, ...prev].slice(0, 300));
-    setNet((prev) => [...prev, (prev.at(-1) ?? 0) + r.pnl.net_usd].slice(-400));
+    // Accumulate NET BENEFIT (cost saved - safety spend = -net_usd), so the line rises when oversight pays
+    // for itself, which reads far more intuitively than a line dropping below zero.
+    setNet((prev) => [...prev, (prev.at(-1) ?? 0) - r.pnl.net_usd].slice(-400));
   }, []);
 
   useEffect(() => {
@@ -197,10 +199,6 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
             {view === "api" && <ApiPanel />}
             {view === "help" && <Help />}
           </div>
-          <footer className="mt-10 flex items-center justify-between border-t border-line pt-5 text-xs text-faint max-md:flex-col max-md:gap-2">
-            <span>ControlPlane · The Tower, value-of-information oversight</span>
-            <span>{summary?.requests ?? 0} decisions · chain {summary?.chain_valid ? "verified" : "-"} · {summary?.models?.judge && summary.models.judge !== "disabled" ? `judge:${summary.models.judge}` : "heuristics"}</span>
-          </footer>
         </main>
       </div>
 
@@ -220,7 +218,7 @@ function FeedRow({ r, onOpen }: { r: Receipt; onOpen: (r: Receipt) => void }) {
         <div className="truncate">{(r.use_case || "").replace("_", " ")} · {ax || "-"} <span className="num">{p.toFixed(2)}</span></div>
         <div className="truncate font-mono text-[11px] text-faint">{r.request_id} · {r.stopping_reason}</div>
       </div>
-      <div className={`num text-xs ${r.pnl.net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(r.pnl.net_usd)}</div>
+      <div className={`num text-xs ${r.pnl.net_usd <= 0 ? "text-pass" : "text-muted"}`}>{usd(-r.pnl.net_usd)}</div>
     </div>
   );
 }
@@ -287,7 +285,7 @@ function Playground({ policies, onDecision, onOpen }: { policies?: Record<string
                   <div className="mt-1 h-1.5 overflow-hidden rounded bg-[color:var(--bg-2)]"><div className="h-full" style={{ width: `${(p ?? 0) * 100}%`, background: AXBAR[a] }} /></div></div>
               ))}
             </div>
-            <p className="mt-3 text-[12px] text-faint">{cp.stopping_reason} · +{cp.added_latency_ms.toFixed(1)} ms · net {usd(cp.net_usd)}</p>
+            <p className="mt-3 text-[12px] text-faint">{cp.stopping_reason} · +{cp.added_latency_ms.toFixed(1)} ms · net benefit {usd(-cp.net_usd)}</p>
           </Card>
         </div>
       ) : (
@@ -325,7 +323,7 @@ function Guarantee() {
         )}
       </Card>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
-        {data?.source && <div className="mb-2 text-[11px] text-faint">Certificate source: <span className="num text-muted">{data.source}</span></div>}
+        {data?.source && <div className="mb-2 flex items-center gap-2 text-[11px] text-faint">Certificate source: {data.source.startsWith("real_public") ? <span className="badge badge-pass">real HaluEval public data</span> : <span className="num text-muted">{data.source} (seed)</span>}</div>}
         <h4 className="mb-2 text-[13px] text-accent">Why this wins the room</h4>
         “We don’t just <i>score</i> risk, we <b className="text-ink">control</b> it.” Turning a tuned threshold into a risk budget with a finite-sample certificate is something no guardrail/observability product ships. With more labelled calibration data (real benchmarks), the bound tightens. Honest by design: when there are too few labelled failures to certify a tight α, it says so.
       </div>
@@ -404,7 +402,7 @@ function Configurator({ onApplied }: { onApplied: () => void }) {
             <Kpi label="Cleared @ T0" value={`${proj.cleared_at_t0_pct}%`} foot="free tier" />
             <Kpi label="Added latency p95" value={`${proj.added_latency_p95_ms} ms`} foot="projected" />
             <Kpi label="Escalations" value={`${(proj.escalation_rate * 100).toFixed(0)}%`} foot={`${proj.human_reviews_per_month.toLocaleString()}/mo to humans`} />
-            <Kpi label="Projected net / mo" value={usd(proj.projected_monthly_net_usd)} tone={proj.self_funding ? "good" : "bad"} foot={proj.self_funding ? "self-funding" : ""} />
+            <Kpi label="Projected benefit / mo" value={usd(-proj.projected_monthly_net_usd)} tone={proj.self_funding ? "good" : "bad"} foot={proj.self_funding ? "self-funding" : "cost > savings"} />
           </div>
           <Card title={`Generated policy · ${res.profile_id}`} desc="Why each knob is set the way it is, the mapping is legible, not a black box.">
             <div className="mb-3 grid grid-cols-2 gap-2 text-[13px] max-md:grid-cols-1">
@@ -491,7 +489,7 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
     <div className="flex flex-col gap-4">
       <div className="kpi-grid">
         <Kpi label="Decisions" value={s?.requests ?? 0} foot="overseen inline" />
-        <Kpi label="Net P&L" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : "safety > savings"} info="Safety spend minus cost saved. Negative = oversight pays for itself." />
+        <Kpi label="Net benefit" value={usd(-(s?.net_usd ?? 0))} tone={(s?.net_usd ?? 0) <= 0 ? "good" : "bad"} foot={(s?.net_usd ?? 0) < 0 ? "self-funding" : "cost > savings"} info="Cost saved minus safety spend. Positive = oversight pays for itself." />
         <Kpi label="Incidents intercepted" value={intercepted} tone={intercepted > 0 ? "good" : undefined} foot="repaired / escalated / blocked" info="Responses that triggered a protective action (auto-repair, escalation, or block). Measures intercepted responses, not real-world incidents." />
         <Kpi label="Cleared @ T0" value={`${s?.cleared_at_t0_pct ?? 100}%`} foot="free tier, ~0ms" info="Share resolved by free checks, the fast path." />
         <Kpi label="Scrutiny" value={`${(s?.scrutiny ?? 1).toFixed(2)}×`} foot="adaptive thermostat" info="Auto-scales verification with recent risk." />
@@ -499,7 +497,7 @@ function Overview({ summary, net, receipts, onOpen, onSend, busy }: { summary: S
         <Kpi label="Blocks" value={ba.block ?? 0} foot="unsafe / leaks" />
       </div>
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
-        <Card title="Cumulative oversight P&L" desc="Every point is a decision; below zero means the cost-axis savings are paying for the safety checks."><Sparkline series={net} /></Card>
+        <Card title="Cumulative net benefit" desc="Every point is a decision; a rising line means the cost-axis savings are outpacing the safety-check spend."><Sparkline series={net} /></Card>
         <Card title="Recent decisions" desc="Newest first, click any row for the full receipt.">
           <div className="flex max-h-[250px] flex-col gap-2 overflow-auto">
             {receipts.length ? receipts.slice(0, 12).map((r) => <FeedRow key={r.request_id} r={r} onOpen={onOpen} />)
@@ -624,8 +622,8 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
       <div className="kpi-grid">
         <Kpi label="Cost saved" value={usd(s?.cost_saved_usd ?? 0)} tone="good" foot="route-down + cache + abort" />
         <Kpi label="Safety spend" value={usd(s?.safety_spend_usd ?? 0)} foot="checks that ran" />
-        <Kpi label="Automated net" value={usd(s?.net_usd ?? 0)} tone={(s?.net_usd ?? 0) < 0 ? "good" : "bad"}
-          foot={measured ? `${s?.measured_requests}/${s?.requests} measured on live model` : "self-funding"} />
+        <Kpi label="Net benefit" value={usd(-(s?.net_usd ?? 0))} tone={(s?.net_usd ?? 0) <= 0 ? "good" : "bad"}
+          foot={measured ? `${s?.measured_requests}/${s?.requests} measured on live model` : "saved − spend"} />
       </div>
       {hasBreakdown && (
         <Card title="How oversight pays for itself" desc="The self-funding loop, itemised: three savings levers on the left recover money that funds the safety checks on the right.">
@@ -650,24 +648,24 @@ function PnlView({ summary, net }: { summary: Summary | null; net: number[] }) {
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between rounded-lg border border-dashed border-line-2 bg-bg-2 px-3 py-2 text-sm">
-            <span className="text-muted">Net (spend − saved)</span>
-            <span className={`num font-semibold ${(s?.net_usd ?? 0) < 0 ? "text-pass" : "text-block"}`}>{usd(s?.net_usd ?? 0)} {(s?.net_usd ?? 0) < 0 ? "· self-funding" : ""}</span>
+            <span className="text-muted">Net benefit (saved − spend)</span>
+            <span className={`num font-semibold ${(s?.net_usd ?? 0) <= 0 ? "text-pass" : "text-block"}`}>{usd(-(s?.net_usd ?? 0))} {(s?.net_usd ?? 0) < 0 ? "· self-funding" : ""}</span>
           </div>
         </Card>
       )}
       {proj && (
         <Card title="Projected at enterprise scale" desc={`The same per-request economics at ${proj.weekly_volume.toLocaleString()} requests/week (the brief's reference volume). Sourced list prices, an estimate not a bill.`}>
           <div className="kpi-grid">
-            <Kpi label="Weekly net" value={usd(proj.weekly_net_usd)} tone={proj.weekly_net_usd < 0 ? "good" : "bad"} />
-            <Kpi label="Annual net" value={usd(proj.annual_net_usd)} tone={proj.annual_net_usd < 0 ? "good" : "bad"} />
+            <Kpi label="Weekly net benefit" value={usd(-proj.weekly_net_usd)} tone={proj.weekly_net_usd <= 0 ? "good" : "bad"} />
+            <Kpi label="Annual net benefit" value={usd(-proj.annual_net_usd)} tone={proj.annual_net_usd <= 0 ? "good" : "bad"} />
             <Kpi label="Human review" value={usd(s?.human_review_usd ?? 0)} foot="analyst time on escalations" />
           </div>
         </Card>
       )}
-      <Card title="Cumulative net"><Sparkline series={net} /></Card>
+      <Card title="Cumulative net benefit"><Sparkline series={net} /></Card>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4">
         <h4 className="mb-2 text-[13px] text-accent">Why can oversight be cheaper than nothing?</h4>
-        <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer: routing an easy question to a small model, or serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings win, the automated net goes below zero, meaning safety <i>and</i> a lower bill. Human review of escalations is a separate, deliberate cost. Prices are published provider list prices.</p>
+        <p className="text-sm text-muted">The same layer that catches errors also finds cheaper paths to the same answer: routing an easy question to a small model, or serving a repeat from cache. Those savings are booked against what the safety checks cost. When savings outweigh the checks, the net benefit is positive, meaning safety <i>and</i> a lower bill. Human review of escalations is a separate, deliberate cost. Prices are published provider list prices.</p>
       </div>
     </div>
   );
@@ -1206,6 +1204,8 @@ resp = client.chat.completions.create(
 function Benchmark() {
   const [n, setN] = useState(2000), [w, setW] = useState(50000), [res, setRes] = useState<any>(null);
   const { prog, run } = useJob();
+  // Auto-run a quick pass on first open so the page shows real measured overhead instead of empty controls.
+  useEffect(() => { run(() => api.startBenchmark(1000, w), (r) => setRes(r)); /* eslint-disable-next-line */ }, []);
   return (
     <Card title="Latency / throughput benchmark" desc="Runs N requests through the local cascade and measures the wall-clock oversight adds per request (the model call is excluded). The T2 judge is off here, it fires only on the uncertain tail.">
       <div className="flex flex-wrap items-center gap-2">
@@ -1232,8 +1232,8 @@ function Benchmark() {
             <Card title="At enterprise scale" desc="Extrapolated from measured per-request economics, simulated traffic at sourced prices, not billing.">
               <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
                 <span className="text-muted">weekly volume</span><span className="num">{res.at_scale.weekly_volume.toLocaleString()}</span>
-                <span className="text-muted">weekly net</span><span className={`num ${res.at_scale.weekly_net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(res.at_scale.weekly_net_usd)}</span>
-                <span className="text-muted">annual net</span><span className={`num ${res.at_scale.annual_net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(res.at_scale.annual_net_usd)}</span>
+                <span className="text-muted">weekly net benefit</span><span className={`num ${res.at_scale.weekly_net_usd <= 0 ? "text-pass" : "text-muted"}`}>{usd(-res.at_scale.weekly_net_usd)}</span>
+                <span className="text-muted">annual net benefit</span><span className={`num ${res.at_scale.annual_net_usd <= 0 ? "text-pass" : "text-muted"}`}>{usd(-res.at_scale.annual_net_usd)}</span>
                 <span className="text-muted">cleared @ T0</span><span className="num">{res.pct_cleared_at_t0}%</span>
               </div>
             </Card>
@@ -1251,17 +1251,18 @@ function Benchmark() {
 function Replay() {
   const [rows, setRows] = useState<Scenario[] | null>(null), [loading, setLoading] = useState(false);
   const go = async () => { setLoading(true); try { const d = await api.replay(); setRows(d.scenarios); toast("Replay complete", `${d.scenarios.length} scenarios`, "ok"); } catch (e) { toast("Failed", String(e), "err"); } setLoading(false); };
+  useEffect(() => { go(); }, []);
   return (
-    <Card desc="The same workload under three risk appetites. Automated oversight is self-funding in every one (auto net below zero). On top of that you choose how much human review to buy: a stricter appetite escalates more, so it cuts residual risk further but costs more analyst time. That is the over- vs under-flagging tradeoff, priced in dollars.">
+    <Card desc="The same workload under three risk appetites. Automated oversight is self-funding in every one (positive net benefit). On top of that you choose how much human review to buy: a stricter appetite escalates more, so it cuts residual risk further but costs more analyst time. That is the over- vs under-flagging tradeoff, priced in dollars.">
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run replay"}</button>
-      {!rows && !loading && <div className="mt-4"><EmptyState icon={History} title="Re-run the same workload under three risk appetites" hint="Strict, balanced, and lenient side by side: residual risk, auto net, human-review cost, and escalation rate, so you can price the over- vs under-flagging tradeoff." /></div>}
-      {rows && (
+      {!rows && !loading && <div className="mt-4"><EmptyState icon={History} title="Re-run the same workload under three risk appetites" hint="Strict, balanced, and lenient side by side: residual risk, net benefit, human-review cost, and escalation rate, so you can price the over- vs under-flagging tradeoff." /></div>}
+      {rows && (<>
         <div className="scroll-x"><table className="mt-4 w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
             <th className="border-b border-line p-2.5">appetite</th>
             <th className="border-b border-line p-2.5 text-right">residual risk</th>
             <th className="border-b border-line p-2.5 text-right">risk cut</th>
-            <th className="border-b border-line p-2.5 text-right">auto net</th>
+            <th className="border-b border-line p-2.5 text-right">auto benefit</th>
             <th className="border-b border-line p-2.5 text-right">human review</th>
             <th className="border-b border-line p-2.5 text-right">all-in cost</th>
             <th className="border-b border-line p-2.5 text-right">escalations</th></tr></thead>
@@ -1269,13 +1270,27 @@ function Replay() {
             <tr key={s.name}><td className="border-b border-line p-2.5">{s.name}{s.self_funding && <span className="badge badge-pass ml-2">self-funding</span>}</td>
               <td className="num border-b border-line p-2.5 text-right">{s.residual_risk.toFixed(3)}</td>
               <td className="num border-b border-line p-2.5 text-right">{s.risk_reduction_pct.toFixed(0)}%</td>
-              <td className={`num border-b border-line p-2.5 text-right ${s.net_usd < 0 ? "text-pass" : "text-muted"}`}>{usd(s.net_usd)}</td>
+              <td className={`num border-b border-line p-2.5 text-right ${s.net_usd <= 0 ? "text-pass" : "text-muted"}`}>{usd(-s.net_usd)}</td>
               <td className="num border-b border-line p-2.5 text-right text-muted">{usd(s.human_review_usd)}</td>
               <td className="num border-b border-line p-2.5 text-right">{usd(s.total_cost_usd)}</td>
               <td className="num border-b border-line p-2.5 text-right">{(s.escalation_rate * 100).toFixed(0)}%</td></tr>))}
           </tbody>
         </table></div>
-      )}
+        <div className="mt-4 grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+          <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
+            <h4 className="mb-1.5 text-[13px] text-accent">Reading the frontier</h4>
+            Going down the rows, a stricter appetite escalates more, so residual risk keeps falling but human-review
+            cost rises. The automated layer stays self-funding (positive auto benefit) in every appetite, so the
+            only real dial is <b className="text-ink">how much human review you buy</b> for the extra risk cut.
+          </div>
+          <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
+            <h4 className="mb-1.5 text-[13px] text-accent">Why this matters</h4>
+            Over-flagging burns analyst time; under-flagging ships liability. Most tools force one fixed setting.
+            Here the same workload is priced under each appetite, so the over- vs under-flagging tradeoff becomes a
+            business decision in dollars, not a guess.
+          </div>
+        </div>
+      </>)}
     </Card>
   );
 }
@@ -1284,6 +1299,7 @@ function Agents() {
   const [r, setR] = useState<AgentReceipt | null>(null), [loading, setLoading] = useState(false);
   const AC: Record<string, [string, string]> = { continue: ["#3fb950", "CONTINUE"], escalate: ["#d9a221", "FLAG"], abort: ["#f85149", "ABORT"] };
   const go = async () => { setLoading(true); try { setR(await api.agentDemo()); toast("Agent trajectory audited", "", "ok"); } catch (e) { toast("Failed", String(e), "err"); } setLoading(false); };
+  useEffect(() => { go(); }, []);
   return (
     <Card desc="A support agent hallucinates a “365-day premium refund” no source supports, then loops to confirm its own invention. The auditor watches risk compound step-by-step and aborts before the wrong answer reaches the user, saving the wasted steps.">
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run agent trajectory"}</button>
@@ -1315,6 +1331,7 @@ function Agents() {
 function Compliance() {
   const [p, setP] = useState<{ decisions: number; controls: ControlRow[] } | null>(null);
   const go = async () => { try { setP(await api.compliance()); toast("Compliance pack generated", "", "ok"); } catch (e) { toast("Failed", String(e), "err"); } };
+  useEffect(() => { go(); }, []);
   return (
     <Card desc="Governance stays policy-as-config; auditor-ready evidence is generated on demand from the tamper-evident receipts. An evidence aid, not a legal certification.">
       <div className="flex gap-2">
@@ -1401,7 +1418,7 @@ function Help() {
       <Card title="Glossary">
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           <span className="text-muted">VoI</span><span>value of information, run a check only if it could change the decision</span>
-          <span className="text-muted">Net P&L</span><span>safety spend − cost saved; negative = self-funding</span>
+          <span className="text-muted">Net benefit</span><span>cost saved − safety spend; positive = self-funding</span>
           <span className="text-muted">Cleared @ T0</span><span>resolved by free checks (the fast path)</span>
           <span className="text-muted">Escalate</span><span>held for a human, the uncertain, high-stakes tail</span>
           <span className="text-muted">Receipt</span><span>the hash-chained audit record of one decision</span>
@@ -1473,7 +1490,7 @@ function ReceiptDrawer({ receipt: r, onClose }: { receipt: Receipt; onClose: () 
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           <span className="text-muted">stopping reason</span><span>{r.stopping_reason}</span>
           <span className="text-muted">expected loss</span><span className="num">{r.expected_loss_before.toFixed(4)} → {r.expected_loss_after.toFixed(4)}</span>
-          <span className="text-muted">P&L</span><span className="num">saved {usd(r.pnl.cost_saved_usd)} · spend {usd(r.pnl.safety_spend_usd)} · <b className={r.pnl.net_usd < 0 ? "text-pass" : "text-muted"}>net {usd(r.pnl.net_usd)}</b></span>
+          <span className="text-muted">P&L</span><span className="num">saved {usd(r.pnl.cost_saved_usd)} · spend {usd(r.pnl.safety_spend_usd)} · <b className={r.pnl.net_usd <= 0 ? "text-pass" : "text-muted"}>net benefit {usd(-r.pnl.net_usd)}</b></span>
         </div>
         <h4 className="mb-1.5 mt-4 text-[13px]">Per-axis verdict</h4>
         {Object.entries(r.per_axis).map(([a, o]) => o && (

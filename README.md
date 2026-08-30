@@ -118,6 +118,18 @@ model. The agent trajectory is a scripted scenario; the auditor that judges it i
 
 ## Quickstart
 
+**Prerequisites:** Python 3.11+, `git`, and `make`. Node 18+ is only needed to build the dashboard.
+(`make` is preinstalled on macOS/Linux; on Windows see [Run on Windows](#run-on-windows-vs-code).)
+
+**1. Get the code:**
+
+```bash
+git clone https://github.com/dhruv-decoder/Hallucinators.git
+cd Hallucinators
+```
+
+**2. Install and try the engine** (fully offline, no keys needed):
+
 ```bash
 make install         # creates .venv and installs the core engine + dev tools
 make test            # 152 unit tests: VoI math, calibration, P&L, replay, and the proxy
@@ -125,13 +137,18 @@ make demo            # runs sample requests through the cascade and prints recei
 make whatif          # re-runs a workload under strict / balanced / lenient / off (the risk-vs-cost frontier)
 ```
 
-**Run the whole product live (The Tower + the Control-Tower dashboard, one service):**
+> All `make` commands use the project's own `.venv`, so you don't need to activate anything first.
+
+**3. Run the whole product live (The Tower + the Control-Tower dashboard, one service):**
 
 ```bash
 make install-serve   # adds the proxy deps (FastAPI, uvicorn, httpx)
-make web-build       # (needs Node) builds the Next.js UI, served by FastAPI as ONE origin
+make web-build       # (needs Node 18+) builds the Next.js UI, served by FastAPI as ONE origin
 make serve           # starts The Tower on http://127.0.0.1:8000
 ```
+
+For a maximal, all-models-on demo in one command (once a Groq key and the `[ml]` extra are set up, below),
+use **`make serve-demo`** instead of `make serve`.
 
 Open **http://127.0.0.1:8000**, click **Launch dashboard**, and either use the seeded demo account
 (`demo@controlplane.ai` / `demo1234`), sign up, or continue as guest. Start in the **Playground**: type any

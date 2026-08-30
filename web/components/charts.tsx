@@ -31,7 +31,7 @@ export function QuadrantChart({ receipts }: { receipts: Receipt[] }) {
     return { x: 1 - perf, y: oc ? oc.score : 1 - perf * 0.5, color: ACTION_COLOR[r.action] };
   });
   return (
-    <ResponsiveContainer width="100%" height={340}>
+    <ResponsiveContainer width="100%" height={440}>
       <ScatterChart margin={{ top: 12, right: 16, bottom: 16, left: 0 }}>
         <ReferenceArea x1={0} x2={0.5} y1={0.5} y2={1} fill="#f85149" fillOpacity={0.08} />
         <ReferenceLine x={0.5} stroke="#1b232e" /><ReferenceLine y={0.5} stroke="#1b232e" />

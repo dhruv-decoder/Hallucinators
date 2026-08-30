@@ -1,0 +1,43 @@
+{
+  "assumption": "future failure examples are exchangeable with calibration failures",
+  "axis": "performance",
+  "calibration_split": "20% source-grouped partition",
+  "certificates": [
+    {
+      "alpha": 0.2,
+      "empirical_fnr": 0.19,
+      "holdout_fnr": 0.11,
+      "n_failures": 100,
+      "risk_bound": 0.19802,
+      "statement": "expected conditional FNR <= 0.20 under exchangeability (empirical 0.190, conformal bound 0.198, n=100 failures, flag at p_fail>=0.125)",
+      "tau": 0.125,
+      "valid": true
+    },
+    {
+      "alpha": 0.1,
+      "empirical_fnr": 0.09,
+      "holdout_fnr": 0.09,
+      "n_failures": 100,
+      "risk_bound": 0.09901,
+      "statement": "expected conditional FNR <= 0.10 under exchangeability (empirical 0.090, conformal bound 0.099, n=100 failures, flag at p_fail>=0.036)",
+      "tau": 0.035714,
+      "valid": true
+    },
+    {
+      "alpha": 0.05,
+      "empirical_fnr": 0.0,
+      "holdout_fnr": 0.0,
+      "n_failures": 100,
+      "risk_bound": 0.009901,
+      "statement": "expected conditional FNR <= 0.05 under exchangeability (empirical 0.000, conformal bound 0.010, n=100 failures, flag at p_fail>=0.000)",
+      "tau": 0.0,
+      "valid": true
+    }
+  ],
+  "created_at": "2026-08-30T13:36:07.064851+00:00",
+  "holdout_split": "20% source-grouped partition (descriptive only)",
+  "risk_definition": "P(pass | true failure)",
+  "score_source": "heuristics-only",
+  "source": "real_public_halueval",
+  "version": 1
+}

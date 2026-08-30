@@ -12,7 +12,7 @@ function Logo() {
   return (
     <div className="flex items-center gap-2.5">
       <BrandMark size={28} />
-      <div className="leading-tight"><b className="text-[15px]">ControlPlane</b><span className="block text-[11px] text-faint">The Tower</span></div>
+      <div className="leading-tight"><b className="text-[15px]">ControlPlane</b><span className="block text-[11px] text-faint max-[360px]:hidden">The Tower</span></div>
     </div>
   );
 }
@@ -45,6 +45,20 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
     api.summary().then(setS).catch(() => {});
     api.benchmark().then(setB).catch(() => {});
   }, []);
+
+  // Scroll-triggered reveals: fade/slide each section in as it enters the viewport (transform+opacity only,
+  // so it stays on the compositor). Falls back to showing everything if IntersectionObserver or motion is off.
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || !("IntersectionObserver" in window)) { els.forEach((e) => e.classList.add("in")); return; }
+    const io = new IntersectionObserver((entries) => {
+      for (const en of entries) if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
+    }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+    els.forEach((e) => io.observe(e));
+    return () => io.disconnect();
+  }, []);
+
   const net = s?.net_usd ?? null;
 
   const cp = b?.strategies?.controlplane, fx = b?.strategies?.fixed_checks;
@@ -63,34 +77,34 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
   return (
     <div className="min-h-screen">
       {/* nav */}
-      <nav className="glass sticky top-0 z-20 flex items-center gap-4 border-b border-line px-6 py-3">
+      <nav className="glass sticky top-0 z-20 flex items-center gap-3 border-b border-line px-4 py-3 sm:gap-4 sm:px-6">
         <Logo />
         <span className="flex-1" />
         <a href="#how" className="hidden text-sm text-muted transition hover:text-ink sm:block">How it works</a>
         <a href="#proof" className="hidden text-sm text-muted transition hover:text-ink sm:block">Proof</a>
         <a href="https://github.com/dhruv-decoder/Hallucinators" target="_blank" rel="noreferrer" className="hidden text-sm text-muted transition hover:text-ink sm:block">GitHub</a>
         <ThemeToggle />
-        <button className="btn-primary inline-flex items-center gap-1.5" onClick={onLaunch}>Launch dashboard <ArrowRight size={15} /></button>
+        <button className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap" onClick={onLaunch}>Launch<span className="max-sm:hidden">&nbsp;dashboard</span> <ArrowRight size={15} /></button>
       </nav>
 
       {/* hero */}
-      <header className="mx-auto max-w-[1080px] px-6 pb-10 pt-20 text-center">
+      <header className="mx-auto max-w-[1080px] px-4 pb-10 pt-16 text-center sm:px-6 sm:pt-20">
         <div className="animate-fadeup mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
           <span className="h-1.5 w-1.5 animate-pulseglow rounded-full" style={{ background: "var(--accent)" }} /> Real-time oversight for enterprise AI
         </div>
-        <h1 className="animate-fadeup text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl" style={{ animationDelay: ".05s" }}>
+        <h1 className="animate-fadeup font-bold leading-[1.05] tracking-tight" style={{ animationDelay: ".05s", fontSize: "clamp(2.1rem, 6.4vw, 3.75rem)" }}>
           Oversight that<br /><span style={{ color: "var(--accent)" }}>pays for itself.</span>
         </h1>
-        <p className="animate-fadeup mx-auto mt-5 max-w-[620px] text-lg text-muted" style={{ animationDelay: ".1s" }}>
+        <p className="animate-fadeup mx-auto mt-5 max-w-[620px] text-muted" style={{ animationDelay: ".1s", fontSize: "clamp(1rem, 2.4vw, 1.125rem)" }}>
           A layer in front of any model that decides, per response, <b className="text-ink">how much verification it&rsquo;s worth</b>,
           buying the cheapest signal first and letting cost savings fund the safety checks. One verdict across performance, cost, and responsibility.
         </p>
-        <div className="animate-fadeup mt-8 flex items-center justify-center gap-3" style={{ animationDelay: ".15s" }}>
+        <div className="animate-fadeup mt-8 flex flex-wrap items-center justify-center gap-3" style={{ animationDelay: ".15s" }}>
           <button className="btn-primary inline-flex items-center gap-1.5 px-5 py-2.5 text-[15px]" onClick={onLaunch}>Launch the live Control Tower <ArrowRight size={16} /></button>
           <a href="#how" className="btn px-5 py-2.5 text-[15px]">See how it works</a>
         </div>
         {/* live ticker */}
-        <div className="animate-fadeup mx-auto mt-12 grid max-w-[760px] grid-cols-3 gap-px overflow-hidden rounded-xl border border-line bg-line" style={{ animationDelay: ".2s" }}>
+        <div className="animate-fadeup mx-auto mt-12 grid max-w-[760px] grid-cols-3 gap-px overflow-hidden rounded-xl border border-line bg-line max-[440px]:grid-cols-1" style={{ animationDelay: ".2s" }}>
           {[
             ["Oversight P&L", net == null ? "live" : usd(net), net == null ? "connecting" : net < 0 ? "self-funding" : "this window"],
             ["Groundedness F1", f1 ?? "live", f1delta != null ? `HaluEval, +${f1delta.toFixed(3)} vs fixed` : "HaluEval, measured"],
@@ -106,7 +120,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
       </header>
 
       {/* three axes */}
-      <section className="mx-auto max-w-[1080px] px-6 py-16">
+      <section className="reveal mx-auto max-w-[1080px] px-4 sm:px-6 py-16">
         <h2 className="text-center text-3xl font-semibold tracking-tight">One layer, three coupled risks, one verdict</h2>
         <p className="mx-auto mt-3 max-w-[560px] text-center text-muted">Not three separate tools shouting different things, a single economic decision across all three.</p>
         <div className="mt-10 grid grid-cols-3 gap-4 max-md:grid-cols-1">
@@ -123,8 +137,8 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
       </section>
 
       {/* proof */}
-      <section id="proof" className="border-y border-line bg-panel-2/40">
-        <div className="mx-auto max-w-[1080px] px-6 py-16">
+      <section id="proof" className="reveal border-y border-line bg-panel-2/40">
+        <div className="mx-auto max-w-[1080px] px-4 py-16 sm:px-6">
           <div className="mb-8 flex items-end justify-between gap-4 max-sm:flex-col max-sm:items-start">
             <div><h2 className="text-3xl font-semibold tracking-tight">Measured, not asserted</h2>
               <p className="mt-2 max-w-[540px] text-muted">Every number is reproducible from the repo, real public benchmarks and a real latency test, not slideware.</p></div>
@@ -164,7 +178,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
       </section>
 
       {/* one-line swap */}
-      <section className="mx-auto max-w-[1080px] px-6 py-6">
+      <section className="reveal mx-auto max-w-[1080px] px-4 sm:px-6 py-6">
         <div className="card grid grid-cols-[1.1fr_1fr] gap-6 p-7 max-md:grid-cols-1">
           <div>
             <span className="pill mb-3"><Zap size={13} /> drop-in</span>
@@ -183,7 +197,7 @@ client = OpenAI(
       </section>
 
       {/* differentiators */}
-      <section className="mx-auto max-w-[1080px] px-6 py-16">
+      <section className="reveal mx-auto max-w-[1080px] px-4 sm:px-6 py-16">
         <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
           {DIFF.map((d) => { const Icon = d.icon; return (
             <div key={d.t} className="card flex gap-4">
@@ -195,7 +209,7 @@ client = OpenAI(
       </section>
 
       {/* CTA */}
-      <section className="mx-auto max-w-[1080px] px-6 pb-24">
+      <section className="reveal mx-auto max-w-[1080px] px-4 sm:px-6 pb-24">
         <div className="card flex flex-col items-center gap-4 py-14 text-center" style={{ background: "radial-gradient(600px 200px at 50% 0%, var(--accent-dim), var(--grad-1))" }}>
           <ShieldCheck size={30} style={{ color: "var(--accent)" }} />
           <h2 className="text-3xl font-semibold tracking-tight">See it run live</h2>

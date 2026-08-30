@@ -33,8 +33,8 @@ export function Auth({ onHome }: { onHome?: () => void }) {
   };
 
   return (
-    <div className="grid min-h-screen place-items-center px-6">
-      <nav className="glass fixed left-0 right-0 top-0 flex items-center gap-4 border-b border-line px-6 py-3">
+    <div className="grid min-h-screen place-items-center px-4 py-20 sm:px-6">
+      <nav className="glass fixed left-0 right-0 top-0 flex items-center gap-4 border-b border-line px-4 py-3 sm:px-6">
         <button onClick={onHome} className="text-left"><Logo /></button>
         <span className="flex-1" /><ThemeToggle />
       </nav>

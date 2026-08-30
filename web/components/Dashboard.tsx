@@ -142,35 +142,36 @@ export default function Dashboard({ onHome }: { onHome?: () => void }) {
 
       {/* main */}
       <div className="flex min-w-0 flex-col">
-        <header className="glass sticky top-0 z-10 flex items-center gap-2.5 border-b border-line px-6 py-3">
-          <div>
-            <div className="text-[15px] font-semibold">{TITLES[view][0]}</div>
-            <div className="text-xs text-faint">{TITLES[view][1]}</div>
+        <header className="glass sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[15px] font-semibold">{TITLES[view][0]}</div>
+            <div className="truncate text-xs text-faint max-sm:hidden">{TITLES[view][1]}</div>
           </div>
-          <span className="flex-1" />
-          <WorkspaceMenu />
-          <ReadyBadge />
-          <span className="pill max-md:hidden" title="Which detectors are model-backed vs heuristic">
-            models <b className="text-ink">{summary?.models?.groundedness ?? "-"} · judge:{summary?.models?.judge ?? "off"}</b>
-          </span>
-          <ThemeToggle />
-          {summary && (() => {
-            const builtin = new Set(summary.builtin_policies ?? []);
-            return (
-              <select className="btn" value={summary.active_policy} title="Active oversight policy. 'demo' profiles ship built-in; others were generated from Use-case setup."
-                onChange={(e) => { const k = Object.entries(summary.policies).find(([, v]) => v === e.target.value)?.[0]; if (k) api.setPolicy(k).then(() => toast("Policy switched", e.target.value, "ok")); }}>
-                {Object.entries(summary.policies).map(([k, p]) => <option key={p} value={p}>{p}{builtin.has(k) ? "  · demo" : "  · generated"}</option>)}
-              </select>
-            );
-          })()}
-          <button className="btn inline-flex items-center gap-1.5" disabled={resetting || busy} onClick={resetData}
-            title="Clear the audit log, P&L, cache, and generated policies back to a clean slate">
-            <RotateCcw size={14} />{resetting ? "resetting…" : "Reset"}
-          </button>
-          <button className="btn-primary inline-flex items-center gap-1.5" disabled={busy} onClick={sendTraffic}
-            title="Runs a burst of realistic requests through the oversight engine so the dashboard fills with live decisions">
-            <Play size={14} />{busy ? "running…" : "Send demo traffic"}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <WorkspaceMenu />
+            <ReadyBadge />
+            <span className="pill max-md:hidden" title="Which detectors are model-backed vs heuristic">
+              models <b className="text-ink">{summary?.models?.groundedness ?? "-"} · judge:{summary?.models?.judge ?? "off"}</b>
+            </span>
+            <ThemeToggle />
+            {summary && (() => {
+              const builtin = new Set(summary.builtin_policies ?? []);
+              return (
+                <select className="btn max-w-[42vw] truncate sm:max-w-[180px]" value={summary.active_policy} title="Active oversight policy. 'demo' profiles ship built-in; others were generated from Use-case setup."
+                  onChange={(e) => { const k = Object.entries(summary.policies).find(([, v]) => v === e.target.value)?.[0]; if (k) api.setPolicy(k).then(() => toast("Policy switched", e.target.value, "ok")); }}>
+                  {Object.entries(summary.policies).map(([k, p]) => <option key={p} value={p}>{p}{builtin.has(k) ? "  · demo" : "  · generated"}</option>)}
+                </select>
+              );
+            })()}
+            <button className="btn inline-flex items-center gap-1.5" disabled={resetting || busy} onClick={resetData}
+              title="Clear the audit log, P&L, cache, and generated policies back to a clean slate">
+              <RotateCcw size={14} /><span className="max-sm:hidden">{resetting ? "resetting…" : "Reset"}</span>
+            </button>
+            <button className="btn-primary inline-flex items-center gap-1.5" disabled={busy} onClick={sendTraffic}
+              title="Runs a burst of realistic requests through the oversight engine so the dashboard fills with live decisions">
+              <Play size={14} /><span className="max-sm:hidden">{busy ? "running…" : "Send demo traffic"}</span>
+            </button>
+          </div>
         </header>
 
         <main className="mx-auto w-full max-w-[1560px] p-6 2xl:max-w-[1720px] 2xl:px-8 2xl:py-8">
@@ -307,7 +308,7 @@ function Guarantee() {
       <Card title="Conformal risk control, a certificate on the escaped-failure rate"
         desc="For a target α, conformal risk control chooses a threshold whose expected conditional false-negative rate on future failures is bounded by α under exchangeability. This is a finite-sample risk guarantee, not a claim of distribution-shift robustness.">
         {err ? <div className="text-faint">Guarantee unavailable.</div> : !data ? <div className="text-faint">Calibrating…</div> : (
-          <table className="w-full border-collapse text-sm">
+          <div className="scroll-x"><table className="w-full border-collapse text-sm">
             <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
               <th className="border-b border-line p-2.5">target α</th><th className="border-b border-line p-2.5">guarantee</th>
               <th className="border-b border-line p-2.5 text-right">flag at p≥</th><th className="border-b border-line p-2.5 text-right">empirical FNR</th>
@@ -320,7 +321,7 @@ function Guarantee() {
                 <td className="num border-b border-line p-2.5 text-right">{c.valid ? c.risk_bound.toFixed(3) : "-"}</td>
                 <td className="num border-b border-line p-2.5 text-right">{c.n_failures}</td></tr>))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </Card>
       <div className="rounded-xl border border-dashed border-line-2 bg-bg-2 p-4 text-sm text-muted">
@@ -883,7 +884,7 @@ function PublicBenchmarks() {
           <button className="btn text-xs" onClick={() => download("controlplane_benchmark.json", "application/json", JSON.stringify(data, null, 2))}><Download size={13} /> JSON</button>
           <button className="btn text-xs" onClick={exportCsv}><Download size={13} /> CSV</button>
         </div>
-        <table className="w-full border-collapse text-sm">
+        <div className="scroll-x"><table className="w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
             <th className="border-b border-line p-2.5">metric</th>
             <th className="border-b border-line p-2.5 text-right">Fixed HHEM</th>
@@ -895,7 +896,7 @@ function PublicBenchmarks() {
               <td className={`num border-b border-line p-2.5 text-right font-semibold ${better(r) ? "text-pass" : ""}`}>{r.fmt(r.get(cp))}</td>
             </tr>))}
           </tbody>
-        </table>
+        </table></div>
       </Card>
 
       <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
@@ -1011,7 +1012,7 @@ function WorkspaceMenu() {
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-1.5 w-[288px] rounded-xl border border-line bg-panel p-2" style={{ boxShadow: "var(--shadow)" }}>
+          <div className="animate-slidein absolute right-0 z-40 mt-1.5 w-[min(288px,86vw)] rounded-xl border border-line bg-panel p-2" style={{ boxShadow: "var(--shadow)" }}>
             {auth.guest ? (
               <div className="p-2 text-[13px] text-muted">You&rsquo;re in the shared guest sandbox.
                 <button className="btn-primary mt-2 w-full" onClick={() => { logout(); }}>Sign in to separate your cases</button></div>
@@ -1187,7 +1188,7 @@ resp = client.chat.completions.create(
         </div>
       </Card>
       <Card title="Endpoints" desc="The surface a judge can poke at directly.">
-        <table className="w-full border-collapse text-sm">
+        <div className="scroll-x"><table className="w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">{["method", "path", "what it returns"].map((h) => <th key={h} className="border-b border-line p-2.5">{h}</th>)}</tr></thead>
           <tbody>{endpoints.map(([m, p, d]) => (
             <tr key={p}>
@@ -1196,7 +1197,7 @@ resp = client.chat.completions.create(
               <td className="border-b border-line p-2.5 text-xs text-muted">{d}</td>
             </tr>))}
           </tbody>
-        </table>
+        </table></div>
       </Card>
     </div>
   );
@@ -1255,7 +1256,7 @@ function Replay() {
       <button className="btn-primary" onClick={go} disabled={loading}>{loading ? "running…" : "Run replay"}</button>
       {!rows && !loading && <div className="mt-4"><EmptyState icon={History} title="Re-run the same workload under three risk appetites" hint="Strict, balanced, and lenient side by side: residual risk, auto net, human-review cost, and escalation rate, so you can price the over- vs under-flagging tradeoff." /></div>}
       {rows && (
-        <table className="mt-4 w-full border-collapse text-sm">
+        <div className="scroll-x"><table className="mt-4 w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
             <th className="border-b border-line p-2.5">appetite</th>
             <th className="border-b border-line p-2.5 text-right">residual risk</th>
@@ -1273,7 +1274,7 @@ function Replay() {
               <td className="num border-b border-line p-2.5 text-right">{usd(s.total_cost_usd)}</td>
               <td className="num border-b border-line p-2.5 text-right">{(s.escalation_rate * 100).toFixed(0)}%</td></tr>))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </Card>
   );
@@ -1322,7 +1323,7 @@ function Compliance() {
       </div>
       {!p && <div className="mt-4"><EmptyState icon={ScrollText} title="Turn the audit log into an evidence pack" hint="Every recorded decision is mapped to EU AI Act / ISO 42001 / NIST AI RMF controls, with the receipt as evidence. Generate it here or download the Markdown for auditors." /></div>}
       {p && (
-        <table className="mt-4 w-full border-collapse text-sm">
+        <div className="scroll-x"><table className="mt-4 w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
             <th className="border-b border-line p-2.5">framework</th><th className="border-b border-line p-2.5">control</th><th className="border-b border-line p-2.5">evidence</th><th className="border-b border-line p-2.5">status</th></tr></thead>
           <tbody>{p.controls.map((c, i) => (
@@ -1330,7 +1331,7 @@ function Compliance() {
               <td className="border-b border-line p-2.5 text-xs text-muted">{c.evidence}</td>
               <td className="border-b border-line p-2.5"><span className={`badge ${c.status === "evidenced" ? "badge-pass" : "badge-escalate"}`}>{c.status}</span></td></tr>))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </Card>
   );
@@ -1357,10 +1358,10 @@ function Detectors({ summary }: { summary: Summary | null }) {
         <Kpi label="Judge (T2)" value={m?.judge ?? "disabled"} tone={m?.judge && m.judge !== "disabled" ? "good" : undefined} foot="uncertain tail only" />
       </div>
       <Card title="Tiered cascade">
-        <table className="w-full border-collapse text-sm">
+        <div className="scroll-x"><table className="w-full border-collapse text-sm">
           <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">{["tier", "axis", "detector", "upgrade path"].map((h) => <th key={h} className="border-b border-line p-2.5">{h}</th>)}</tr></thead>
           <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="border-b border-line p-2.5">{j === 2 && c.includes("(model)") ? <>{c.replace(" (model)", "")} <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] text-muted">model</span></> : c}</td>)}</tr>)}</tbody>
-        </table>
+        </table></div>
         <p className="mt-3 text-[12.5px] text-muted">On real HaluEval data the cheap lexical check scores F1 0.30; the VoI cascade climbing to HHEM on the uncertain tail reaches F1 0.76. Enable models with the <span className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px]">[ml]</span> extra or a judge backend (Groq/Ollama).</p>
       </Card>
       <Card title="Learned detector informativeness" desc="The runtime η values determine how much a detector can be expected to reduce uncertainty. The source indicates whether a learned offline artifact is loaded.">

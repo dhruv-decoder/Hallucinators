@@ -142,7 +142,7 @@ prompt and watch a real model answer while ControlPlane oversees it live.
 ```bash
 echo 'GROQ_API_KEY=your_free_groq_key' >> .env    # measured economics + a real Playground model
 pip install -e ".[ml]"                             # HHEM-2.1 groundedness + Presidio PII
-pip install sentence-transformers                  # real embedding semantic cache
+pip install -e ".[semantic-cache]"                 # real embedding semantic cache (pinned, HHEM-compatible)
 export CONTROLPLANE_SEMANTIC_CACHE=1               # enable near-duplicate cache bypass
 ```
 

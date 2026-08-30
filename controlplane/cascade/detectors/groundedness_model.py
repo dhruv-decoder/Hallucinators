@@ -62,8 +62,23 @@ class HHEMGroundednessDetector(Detector):
 
     @classmethod
     def available(cls) -> bool:
-        """True if the optional deps are importable (does not load the model)."""
-        return bool(importlib.util.find_spec("transformers") and importlib.util.find_spec("torch"))
+        """True if the optional deps are importable AND on a compatible transformers version.
+
+        HHEM-2.1-Open's vendored model code needs transformers 4.x; on 5.x the checkpoint loads with
+        newly-initialised (random) embeddings and would silently emit garbage. Rather than mis-score, we
+        report unavailable so the engine falls back to the honest lexical heuristic (and the dashboard shows
+        ``lexical-heuristic`` instead of claiming ``hhem-2.1``). Pin with the ``[ml]`` extra (transformers<5).
+        """
+        if not (importlib.util.find_spec("transformers") and importlib.util.find_spec("torch")):
+            return False
+        try:
+            import transformers
+
+            if int(transformers.__version__.split(".")[0]) >= 5:
+                return False
+        except Exception:  # noqa: BLE001 - if the version can't be parsed, let the loader try
+            pass
+        return True
 
     def applicable(self, ctx: RequestContext) -> bool:
         return bool(ctx.retrieved_context and (ctx.response or "").strip())

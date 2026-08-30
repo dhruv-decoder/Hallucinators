@@ -85,6 +85,14 @@ calibration:
 serve:
 	python -m controlplane.proxy
 
+# Recording / full-demo launch: turns on every model-backed detector we ship (HHEM-2.1 groundedness and the
+# Groq judge auto-enable from the installed extras + your GROQ_API_KEY; this also flips on Presidio PII, the
+# gpt-oss-safeguard content-safety model, and the real semantic cache), and warms them so /readyz waits for
+# them. One command for a maximal, all-green demo. Falls back gracefully if any model is unavailable.
+serve-demo:
+	CONTROLPLANE_USE_PRESIDIO=1 CONTROLPLANE_USE_GROQ_SAFETY=1 CONTROLPLANE_SEMANTIC_CACHE=1 CONTROLPLANE_WARMUP=1 \
+		python -m controlplane.proxy
+
 traffic:
 	python -m controlplane.proxy.traffic
 

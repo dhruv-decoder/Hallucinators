@@ -153,7 +153,8 @@ class LlmJudgeDetector(Detector):
         try:
             raw = self._call_backend(self._prompt(ctx, answer=claim or ctx.response))
         except Exception as exc:  # noqa: BLE001 - a judge failure must not break the pipeline
-            return 0.0, {"abstained": True, "reason": f"judge unavailable: {exc}", "backend": self.backend}
+            return 0.0, {"abstained": True, "unavailable": True,
+                         "reason": f"judge unavailable: {exc}", "backend": self.backend}
         match = _NUM.search(raw or "")
         if not match:
             return 0.0, {"abstained": True, "reason": "unparseable judge reply", "raw": (raw or "")[:60]}

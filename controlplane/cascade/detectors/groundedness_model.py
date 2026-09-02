@@ -40,15 +40,25 @@ def _get_model():
 
     from controlplane.runtime import pick_device
 
-    model = AutoModelForSequenceClassification.from_pretrained(_MODEL_ID, trust_remote_code=True)
+    def _load(device: str):
+        """Load a fresh instance on ``device``, proving it works before it is handed back."""
+        m = AutoModelForSequenceClassification.from_pretrained(_MODEL_ID, trust_remote_code=True)
+        if device != "cpu":
+            m = m.to(device)
+        m.predict([("the sky is blue", "the sky is blue")])  # smoke-test this exact instance
+        return m
+
     device = pick_device()
-    if device != "cpu":
-        try:
-            model = model.to(device)
-            model.predict([("the sky is blue", "the sky is blue")])  # smoke-test the device
-        except Exception:  # noqa: BLE001 - unsupported op on this device -> CPU
-            model = model.to("cpu")
-    return model
+    if device == "cpu":
+        return _load("cpu")
+    try:
+        return _load(device)
+    except Exception:  # noqa: BLE001 - accelerator unavailable, busy, or missing an op
+        # Reload from scratch rather than moving the failed object. A model that was materialised with meta
+        # tensors cannot be moved to CPU either, so `.to("cpu")` on it raises again and the detector ends up
+        # abstaining on every request while reporting itself healthy. Building a clean CPU instance is the
+        # only fallback that actually recovers.
+        return _load("cpu")
 
 
 class HHEMGroundednessDetector(Detector):
@@ -101,7 +111,7 @@ class HHEMGroundednessDetector(Detector):
             scores = model.predict([(chunk, hypothesis) for chunk in chunks])
             consistency = max(float(s) for s in scores)
         except Exception as exc:  # noqa: BLE001 - a model load/inference failure must not break the pipeline
-            return 0.0, {"abstained": True, "reason": f"hhem unavailable: {exc}"}
+            return 0.0, {"abstained": True, "unavailable": True, "reason": f"hhem unavailable: {exc}"}
         detail = {"hhem_consistency": round(consistency, 4), "chunks": len(chunks)}
         if declined:
             detail["abstention_clauses_ignored"] = len(declined)

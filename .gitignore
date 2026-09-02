@@ -41,3 +41,7 @@ ui/out/
 # auth + per-workspace stores
 controlplane_auth.db
 data/
+proposal/
+
+# stray downloads
+*.dmg

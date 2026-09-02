@@ -92,7 +92,7 @@ eval-eta:
 
 hard-cases:
 	$(VENV_PYTHON) -m controlplane.eval.run_hard_cases $(ARGS)
-	@echo "Wrote artifacts/hard_cases.json -- the Hard cases panel reads it"
+	@echo "Wrote artifacts/hard_cases.json -- the Failure analysis panel reads it"
 
 conformal-real:
 	$(VENV_PYTHON) -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 $(ARGS)

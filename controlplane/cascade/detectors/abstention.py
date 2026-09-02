@@ -34,6 +34,7 @@ _ABSTAIN = re.compile(
     r" (?:help|assist|comply|provide|share|give|answer|do that)"
     r"|i (?:do not|don'?t) (?:have|know|see|find)"
     r"|i (?:do not|don'?t) have (?:access|that|the|any|enough)"
+    r"|(?:is|are|was|were) not (?:mentioned|specified|provided|included|listed|stated|given|available)"
     r"|(?:that|this|it) (?:information |detail |number )?(?:is|'s| is) not"
     r" (?:in|available|included|provided|specified|mentioned)"
     r"|(?:is|are|was|were) not (?:in|included in|mentioned in|specified in|provided in|part of)"
@@ -50,9 +51,19 @@ _ABSTAIN = re.compile(
     re.IGNORECASE,
 )
 
-#: Split on sentence boundaries and on markdown list-item boundaries, so a bulleted answer that mixes a real
-#: claim with a "not provided" line is scored on the claim alone.
-_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+#: Split on sentence boundaries, list-item boundaries, and the conjunctions that join an answer to a
+#: disclaimer. A model very often packs both into one sentence -- "You have 30 days to return it, and the
+#: restocking fee is not mentioned in the policy" -- where the first clause is a checkable claim and the
+#: second asserts nothing. Splitting only on sentences leaves them fused, so the disclaimer drags the whole
+#: sentence through groundedness scoring and a correct answer is flagged as unsupported.
+_SPLIT = re.compile(
+    r"(?<=[.!?])\s+"          # sentence end
+    r"|\n+"                   # line or list-item break
+    r"|\s*;\s*"              # semicolon, the usual claim/disclaimer joint
+    r"|,?\s+(?:but|although|though|however)\s+"   # contrastive clause
+    r"|,\s+(?:and|while)\s+(?=[^,]*\b(?:not|no|isn'?t|aren'?t|don'?t|doesn'?t|unavailable)\b)",
+    re.IGNORECASE,
+)
 
 #: A residue this short after stripping abstention clauses is punctuation/filler, not a claim.
 _MIN_SUBSTANTIVE_WORDS = 4
@@ -76,11 +87,14 @@ def split_abstention(text: str) -> tuple[str, list[str]]:
         if not clean:
             continue
         (abstained if _ABSTAIN.search(clean) else substantive).append(clean)
+    if not abstained:
+        # Nothing was declined, so there is nothing to separate. Return the response untouched rather than
+        # a version reassembled from the split, which would drop the punctuation the detectors read.
+        return text.strip(), []
     joined = " ".join(substantive).strip()
     # A stub like "However:" or a bare bullet marker is not a claim.
     if len(re.findall(r"[A-Za-z0-9]+", joined)) < _MIN_SUBSTANTIVE_WORDS:
-        if abstained:
-            return "", abstained + ([joined] if joined else [])
+        return "", abstained + ([joined] if joined else [])
     return joined, abstained
 
 

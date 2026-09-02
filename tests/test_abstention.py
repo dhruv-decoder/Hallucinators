@@ -115,3 +115,39 @@ def test_judge_scores_the_claim_not_the_refusal_wrapper() -> None:
     answer = seen["prompt"].split("ANSWER:", 1)[1]
     assert "30 days" in answer
     assert "phone number" not in answer
+
+
+def test_a_disclaimer_inside_a_sentence_is_separated_from_the_claim() -> None:
+    """Models pack an answer and a disclaimer into one sentence far more often than into two.
+
+    "You have 30 days to return it, and the restocking fee is not mentioned" is a correct answer plus a
+    correct statement that the source is silent. Scoring the whole sentence for groundedness drags the
+    disclaimer through the entailment check and flags a good answer as unsupported.
+    """
+    claim, declined = split_abstention(
+        "You have 30 days to return a damaged item, and the restocking fee is not mentioned in the policy."
+    )
+    assert declined, "the disclaimer clause should be separated out"
+    assert "30 days" in claim
+    assert "restocking" not in claim
+
+
+def test_asserting_a_fact_is_not_a_disclaimer() -> None:
+    """The distinction the split has to keep: saying the source is silent differs from stating a fact.
+
+    "There is no restocking fee" is a claim about the world, and a wrong one if the source never said so.
+    It must stay in the scored text.
+    """
+    text = "You have 30 days to return a damaged item, and there is no restocking fee."
+    claim, declined = split_abstention(text)
+    assert declined == []
+    assert claim == text, "a response with no disclaimer must be scored exactly as written"
+
+
+def test_text_without_a_disclaimer_is_returned_unchanged() -> None:
+    """Splitting is for separating a disclaimer. With none present the original punctuation must survive."""
+    for text in [
+        "Support is open 9am to 6pm, and the late fee is $25.",
+        "The refund window is 180 days, guaranteed, no doubt about it.",
+    ]:
+        assert split_abstention(text) == (text, [])

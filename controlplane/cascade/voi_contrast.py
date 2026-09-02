@@ -64,6 +64,89 @@ _UNCERTAIN = RequestContext(
 )
 
 
+# Grounded, but the samples disagree with each other: the cheap tier is split, so the check is worth buying.
+_DISAGREE = RequestContext(
+    request_id="voi-disagree",
+    use_case="support_bot",
+    prompt="How long does a refund take to arrive?",
+    response="Refunds usually arrive within a few days.",
+    retrieved_context=["Refunds are issued within 30 days of an approved request."],
+    samples=[
+        "Refunds arrive in 3 to 5 business days.",
+        "It can take up to 30 days.",
+        "Usually about a week, sometimes longer.",
+    ],
+    model="gpt-4o",
+    input_tokens=150,
+    output_tokens=40,
+)
+
+# Nothing was retrieved, so groundedness has nothing to check against and self-consistency has no samples.
+# There is no expensive check to buy at any price: the cascade cannot spend money it has no use for.
+_NO_SOURCE = RequestContext(
+    request_id="voi-nosource",
+    use_case="support_bot",
+    prompt="Can you walk me through resetting my password?",
+    response="Click 'Forgot password' on the sign-in page and follow the emailed link.",
+    retrieved_context=[],
+    samples=[],
+    model="gpt-4o",
+    input_tokens=90,
+    output_tokens=30,
+)
+
+# Contradicts the source outright and the samples agree with each other on the wrong figure. The cheap tier
+# is already confident, so more information cannot change the action: buying a check would be waste.
+_CONFIDENT_WRONG = RequestContext(
+    request_id="voi-confident-wrong",
+    use_case="support_bot",
+    prompt="What is the maximum refund window?",
+    response="You can absolutely get a refund within 180 days, guaranteed, no doubt about it.",
+    retrieved_context=["Refunds are available within 30 days of purchase."],
+    samples=[
+        "Refunds are available for 180 days.",
+        "The window is 180 days.",
+    ],
+    model="gpt-4o",
+    input_tokens=140,
+    output_tokens=45,
+)
+
+#: Every case, with what its decision demonstrates. Ordered so the table walks from "nothing to buy"
+#: through "buy everything" and ends on the subtlest outcome: stopping early because the next check could
+#: no longer change the action.
+_CASES: list[tuple[str, str, RequestContext]] = [
+    (
+        "Nothing retrieved",
+        "Groundedness has no source to check against, so the only applicable check is worth nothing "
+        "and none is bought.",
+        _NO_SOURCE,
+    ),
+    (
+        "Grounded, samples agree",
+        "The free tier leaves no uncertainty. Every paid check scores zero value and all three are skipped.",
+        _SAFE,
+    ),
+    (
+        "Contradicts the source, confidently",
+        "Buys both model checks, but skips the sampling check whose price exceeds what its information "
+        "is worth here. The rule is per check, not per response.",
+        _CONFIDENT_WRONG,
+    ),
+    (
+        "Samples disagree",
+        "Genuine uncertainty across the board, so every check earns its cost and all three are bought.",
+        _DISAGREE,
+    ),
+    (
+        "Partly grounded and inconsistent",
+        "Buys until the axis is settled, then stops: by the time the judge is considered the outcome is "
+        "already decided, so its information cannot change the action and it is not paid for.",
+        _UNCERTAIN,
+    ),
+]
+
+
 def _engine() -> CascadeEngine:
     return CascadeEngine(
         detectors=build_failure_detectors(),
@@ -104,13 +187,23 @@ def _summarize(ctx: RequestContext) -> dict:
 
 
 def voi_contrast() -> dict:
-    """Return the two-case contrast: same engine/policy, safe response SKIPS the check, uncertain BUYS it."""
+    """Run every case through the same engine and policy, and report what the stopping rule decided.
+
+    Only the response changes between rows. Everything else -- detectors, thresholds, prices -- is held
+    fixed, which is what makes the differing decisions attributable to the rule rather than to configuration.
+    """
+    cases = [
+        {"label": label, "why": why, **_summarize(ctx)} for label, why, ctx in _CASES
+    ]
     return {
         "policy_id": _POLICY.id,
-        "safe": _summarize(_SAFE),
-        "uncertain": _summarize(_UNCERTAIN),
+        "cases": cases,
+        # The original pair, kept so existing callers and tests keep working.
+        "safe": next(c for c in cases if c["prompt"] == _SAFE.prompt),
+        "uncertain": next(c for c in cases if c["prompt"] == _UNCERTAIN.prompt),
         "note": (
-            "Same engine, detectors, and policy. The VoI rule buys the expensive check only when the cheap "
-            "checks leave enough uncertainty that the information is worth more than the check's cost."
+            "Same engine, detectors, and policy across every row. The stopping rule buys the expensive check "
+            "only where the cheap checks leave enough uncertainty that the information is worth more than the "
+            "check costs."
         ),
     }

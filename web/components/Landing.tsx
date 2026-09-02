@@ -51,12 +51,14 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
   useEffect(() => {
     const els = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce || !("IntersectionObserver" in window)) { els.forEach((e) => e.classList.add("in")); return; }
+    if (reduce || !("IntersectionObserver" in window)) return;  // CSS leaves everything visible
+    const root = document.documentElement;
+    root.classList.add("js-reveal");  // only now is it safe to hide, because we can un-hide
     const io = new IntersectionObserver((entries) => {
       for (const en of entries) if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); }
     }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
     els.forEach((e) => io.observe(e));
-    return () => io.disconnect();
+    return () => { io.disconnect(); root.classList.remove("js-reveal"); };
   }, []);
 
   const net = s?.net_usd ?? null;
@@ -213,7 +215,7 @@ client = OpenAI(
         <div className="card flex flex-col items-center gap-4 py-14 text-center" style={{ background: "radial-gradient(600px 200px at 50% 0%, var(--accent-dim), var(--grad-1))" }}>
           <ShieldCheck size={30} style={{ color: "var(--accent)" }} />
           <h2 className="text-3xl font-semibold tracking-tight">See it run live</h2>
-          <p className="max-w-[520px] text-muted">Send demo traffic, watch the P&L go negative, benchmark the latency, and stop a looping agent, all in the browser.</p>
+          <p className="max-w-[520px] text-muted">Send demo traffic, watch the net benefit climb, benchmark the latency, and stop a looping agent, all in the browser.</p>
           <button className="btn-primary inline-flex items-center gap-1.5 px-5 py-2.5 text-[15px]" onClick={onLaunch}>Launch the Control Tower <ArrowRight size={16} /></button>
         </div>
       </section>

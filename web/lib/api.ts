@@ -10,11 +10,21 @@ export type Axis = "performance" | "cost" | "responsibility";
 export type Action = "pass" | "annotate" | "auto_repair" | "escalate" | "block";
 
 export interface AxisOutcome { p_fail: number }
-export interface Signal { name: string; axis: Axis; tier: number; score: number; p_fail?: number; latency_ms?: number }
+export interface Signal {
+  name: string; axis: Axis; tier: number; score: number; p_fail?: number; latency_ms?: number;
+  detail?: Record<string, any>;
+}
 export interface VoIStep { axis: Axis; detector: string; tier: number; voi: number; check_cost: number; ran: boolean; reason: string }
 export interface Pnl { cost_saved_usd: number; safety_spend_usd: number; net_usd: number }
+// The text behind a decision, redacted server-side before it is written to the audit log. Without this a
+// receipt is unreadable: you cannot tell whether "p_fail 0.98 -> repair" was right without seeing the words.
+export interface Transcript {
+  prompt: string; response: string; delivered: string;
+  retrieved_context: string[]; model: string; redacted: Record<string, number>; truncated: boolean;
+}
 export interface Receipt {
   request_id: string; use_case: string; action: Action; policy_id: string; stopping_reason: string;
+  ts?: string; transcript?: Transcript;
   per_axis: Partial<Record<Axis, AxisOutcome>>; signals: Signal[]; trace: VoIStep[];
   cost_opportunities: { name: string; recommendation: string; estimated_savings_usd: number }[];
   expected_loss_before: number; expected_loss_after: number; repaired_output?: string | null;
@@ -106,10 +116,38 @@ export interface RuntimeObservability {
   config: { max_concurrency: number; queue_timeout_ms: number; upstream_timeout_s: number; upstream_retries: number };
 }
 
+export interface HardCaseFamily {
+  id: string; source: string; why: string;
+  cases: number; runs: number; model_failed: number; caught: number; flagged_safe: number;
+}
+export interface HardCase {
+  id: string; family: string; note: string; prompt: string; context: string;
+  runs: number; model_failed: number; oversight_caught: number; flagged_when_model_was_right: number;
+  actions: Record<string, number>; example_response: string; shipped: boolean;
+}
+export interface HardCases {
+  artifact?: string; generated_at: string; model: string; repeats_per_case: number; decoding: string;
+  method: string; families: HardCaseFamily[]; cases: HardCase[];
+  totals: { cases: number; runs: number; model_failures: number; caught: number; flagged_when_model_was_right: number; shipped: number };
+  caveats: string[];
+}
+
+export interface EstimateStep {
+  metric: string; value: string; formula: string; inputs: string[]; meaning: string;
+  latex?: string; latex_substituted?: string;
+}
+export interface EstimateMethod {
+  basis: string; constants: Record<string, any>; steps: EstimateStep[]; caveats: string[];
+}
+
 export interface GeneratedPolicy {
   profile_id: string; applied: boolean;
   knobs: { lambda_latency: number; cost_fail: Record<string, number>; block_threshold: number; escalate_threshold: number; annotate_threshold: number };
-  projection: { weekly_volume: number; cleared_at_t0_pct: number; added_latency_p95_ms: number; escalation_rate: number; human_reviews_per_month: number; projected_monthly_net_usd: number; self_funding: boolean; note: string };
+  projection: {
+    weekly_volume: number; cleared_at_t0_pct: number; added_latency_p95_ms: number; escalation_rate: number;
+    human_reviews_per_month: number; projected_monthly_net_usd: number; self_funding: boolean; note: string;
+    estimate_method?: EstimateMethod;
+  };
   rationale: string[]; recommended_detectors: string[]; compliance: string[];
 }
 
@@ -132,7 +170,8 @@ export const api = {
   health: () => jget<{ ok: boolean; upstream: string; models: Summary["models"] }>("/healthz"),
   summary: () => jget<Summary>("/v1/oversight/summary"),
   receipts: (limit = 80) => jget<{ receipts: Receipt[] }>(`/v1/oversight/receipts?limit=${limit}`),
-  simulate: () => jpost<{ processed: number }>("/v1/oversight/simulate"),
+  simulate: () =>
+    jpost<{ processed: number; results: { request_id: string; action: Action }[] }>("/v1/oversight/simulate"),
   reset: () => jpost<{ reset: boolean; cleared_receipts: number; dropped_policies: string[] }>("/v1/oversight/reset"),
   setPolicy: (policy: string) =>
     fetch(`${API_BASE}/v1/oversight/policy`, {
@@ -165,6 +204,7 @@ export const api = {
   cache: () => jget<CacheStatus>('/v1/oversight/cache'),
   informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),
   benchmark: () => jget<BenchmarkEval>('/v1/oversight/benchmark'),
+  hardCases: () => jget<HardCases>('/v1/oversight/hard-cases'),
   voiContrast: () => jget<VoIContrast>('/v1/oversight/voi-contrast'),
   streamGuard: () => jget<StreamGuardDemo>('/v1/oversight/streamguard-demo'),
 };

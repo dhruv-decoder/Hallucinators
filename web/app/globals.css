@@ -1,3 +1,5 @@
+@import "katex/dist/katex.min.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -61,15 +63,16 @@ textarea:focus-visible, [tabindex]:focus-visible, .navitem:focus-visible {
   .kpi { @apply rounded-xl border border-line bg-panel p-4; }
   /* One rhythm for every KPI row. A flex strip (not a stretch grid) so a few stats read as a tidy row of
      consistent cards instead of ballooning into huge half-empty tiles on large screens; wraps cleanly. */
-  .kpi-grid { @apply flex flex-wrap gap-3; }
-  .kpi-grid > * { flex: 1 1 190px; max-width: 280px; }
+  /* A real grid rather than a flex wrap: flex leaves an orphan card stretched across a half-empty row,
+     which is what made the header read as broken. auto-fit keeps every row full-width and equal. */
+  .kpi-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); }
   .empty { @apply flex flex-col items-center justify-center rounded-xl border border-dashed border-line py-14 text-center; }
   .navitem { @apply flex cursor-pointer select-none items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-muted transition; }
   .navitem:hover { @apply text-ink; background: var(--panel); }
   .navitem-active { color: var(--ink); background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .num { @apply font-mono tabular-nums; }
   .glass { background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); }
-  .badge { @apply inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide; }
+  .badge { @apply inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide; white-space: nowrap; }
   .badge-pass { color: var(--pass); background: color-mix(in srgb, var(--pass) 15%, transparent); }
   .badge-annotate { color: var(--annotate); background: color-mix(in srgb, var(--annotate) 15%, transparent); }
   .badge-auto_repair { color: var(--repair); background: color-mix(in srgb, var(--repair) 15%, transparent); }
@@ -87,8 +90,11 @@ textarea:focus-visible, [tabindex]:focus-visible, .navitem:focus-visible {
 .btn:active, .btn-primary:active { transform: translateY(1px) scale(.98); }
 .navitem { transition: background .15s ease, color .15s ease, padding-left .15s ease; }
 .navitem:hover { padding-left: 15px; }
-.reveal { opacity: 0; transform: translateY(16px); }
-.reveal.in { opacity: 1; transform: none; transition: opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1); }
+/* Scroll reveals are an enhancement, never a prerequisite for seeing the page. The hidden state is scoped
+   to `js-reveal`, which the script adds only once it has an observer ready, so if the script never runs the
+   content is simply visible rather than stuck at zero opacity. */
+.js-reveal .reveal { opacity: 0; transform: translateY(16px); }
+.js-reveal .reveal.in { opacity: 1; transform: none; transition: opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1); }
 .viewfade { animation: fadeup .32s cubic-bezier(.2,.7,.2,1) both; }
 input[type=range] { height: 4px; border-radius: 999px; background: var(--line-2); }
 @media (prefers-reduced-motion: reduce) {
@@ -101,4 +107,148 @@ input[type=range] { height: 4px; border-radius: 999px; background: var(--line-2)
   .reveal { opacity: 1 !important; transform: none !important; }
   .card:hover, .kpi:hover { transform: none; }
   .navitem:hover { padding-left: 12px; }
+}
+
+/* ============================================================================================
+   TYPE SCALE
+   Five sizes, no more. The previous pass grew to nine ad-hoc `text-[Npx]` values, which is what
+   made the dashboard read as cluttered: with no repeating rhythm the eye cannot tell a heading
+   from a caption, so everything competes and nothing leads.
+   ============================================================================================ */
+.t-h1   { font-size: 20px; line-height: 1.25; font-weight: 620; letter-spacing: -0.015em; }
+.t-h2   { font-size: 15px; line-height: 1.35; font-weight: 600; letter-spacing: -0.008em; }
+.t-body { font-size: 13.5px; line-height: 1.6; }
+.t-meta { font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.t-label{ font-size: 10.5px; line-height: 1.4; font-weight: 600; letter-spacing: .07em;
+          text-transform: uppercase; color: var(--faint); }
+
+/* Long-form prose caps its measure: past ~78 characters the eye loses the line on the return sweep. */
+.prose-w { max-width: 74ch; }
+
+/* ============================================================================================
+   HOVER EXPLANATIONS
+   Detail lives here rather than on the surface, so a panel can stay quiet and still answer
+   every question a first-time reader has.
+   ============================================================================================ */
+.tip { position: relative; display: inline-flex; align-items: center; }
+.tip > .tip-body {
+  position: absolute; bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%) translateY(4px);
+  z-index: 70; width: max-content; max-width: 300px; padding: 9px 11px;
+  border-radius: 9px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink);
+  font-size: 12.5px; line-height: 1.5; font-weight: 400; text-align: left; text-transform: none;
+  letter-spacing: 0; box-shadow: var(--shadow); pointer-events: none; opacity: 0; visibility: hidden;
+  transition: opacity .14s ease, transform .14s ease, visibility .14s;
+}
+.tip:hover > .tip-body, .tip:focus-visible > .tip-body { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+.tip > .tip-body::after {
+  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--line-2);
+}
+/* Near the right edge a centred tooltip would overflow, so those anchor right instead. */
+.tip-right > .tip-body { left: auto; right: 0; transform: translateY(4px); }
+.tip-right:hover > .tip-body, .tip-right:focus-visible > .tip-body { transform: translateY(0); }
+.tip-right > .tip-body::after { left: auto; right: 10px; transform: none; }
+
+.tip-dot {
+  display: inline-flex; height: 14px; width: 14px; flex: none; cursor: help; align-items: center;
+  justify-content: center; border-radius: 999px; border: 1px solid var(--line-2);
+  font-size: 9px; font-weight: 600; color: var(--faint); text-transform: none; letter-spacing: 0;
+  transition: border-color .15s ease, color .15s ease;
+}
+.tip:hover > .tip-dot { border-color: var(--accent); color: var(--accent); }
+/* A term carrying an explanation gets a quiet underline so it is discoverable without shouting. */
+.tip-term { cursor: help; border-bottom: 1px dashed var(--line-2); transition: border-color .15s ease; }
+.tip:hover .tip-term { border-bottom-color: var(--accent); }
+
+/* ============================================================================================
+   DATA SURFACES
+   ============================================================================================ */
+/* A row belonging to the batch the user just triggered. */
+.run-hit { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)) !important;
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel-2)) !important; }
+
+/* One table style everywhere, so every panel reads the same way. */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th {
+  padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--faint);
+  white-space: nowrap;
+}
+.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr { transition: background .12s ease; }
+.tbl tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.tbl .r { text-align: right; }
+
+/* A quiet framed note. Used for caveats and orientation copy, never for anything load-bearing. */
+.note { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--bg-2); }
+.note-accent { border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); }
+.note-warn { border-color: color-mix(in srgb, var(--escalate) 38%, var(--line)); }
+
+/* ============================================================================================
+   EQUATIONS (KaTeX)
+   The previous pass rendered maths as ASCII inside <pre>, which looked like a code dump and broke
+   alignment. KaTeX gives real typeset notation, and the surrounding chrome keeps it readable.
+   ============================================================================================ */
+.eq {
+  margin: 12px 0; padding: 16px 18px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg-2); overflow-x: auto;
+}
+.eq .katex-display { margin: 0; }
+.eq-label { display: block; margin-bottom: 8px; }
+.katex { font-size: 1.06em; color: var(--ink); }
+.katex-display > .katex { text-align: center; }
+/* Inline maths inside running text should not disturb the line box. */
+.katex-inline .katex { font-size: 1em; }
+
+/* A step in a derivation: a numbered rule with its own heading and body. */
+.deriv { border-left: 2px solid var(--line-2); padding-left: 18px; margin-left: 4px; }
+.deriv + .deriv { margin-top: 22px; }
+
+/* ============================================================================================
+   FEEDBACK AND MOTION
+   Every one of these exists to answer a question the user would otherwise have to guess at:
+   is this row new, is this value live, did my click register, which panel am I on.
+   ============================================================================================ */
+
+/* A newly arrived row briefly tints, so a live feed reads as a feed rather than a list that
+   silently rearranged itself. */
+@keyframes arrive {
+  0%   { background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); }
+  100% { background: var(--panel-2); }
+}
+.row-new { animation: arrive 1.6s ease-out 1; }
+
+/* Live counters pulse once when they change, so a number that moved is not mistaken for one that
+   was always there. */
+@keyframes bump { 0% { transform: none; } 35% { transform: translateY(-2px); } 100% { transform: none; } }
+.bump { animation: bump .34s cubic-bezier(.2,.7,.2,1) 1; }
+
+/* The connection dot: calm when streaming, obvious when not. */
+@keyframes pulseglow { 0%, 100% { opacity: .25; } 50% { opacity: .55; } }
+.live-dot { position: relative; display: inline-flex; height: 7px; width: 7px; border-radius: 999px; }
+.live-dot::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 999px;
+  background: currentColor; opacity: .25; animation: pulseglow 2.4s ease-in-out infinite;
+}
+.live-dot-off::after { animation: none; opacity: 0; }
+
+/* Primary actions lift slightly on hover so the main affordance on a panel is unmistakable. */
+.btn-primary:hover { transform: translateY(-1px); }
+.btn:disabled, .btn-primary:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+/* The active nav item gets a rail, which reads faster than a background tint alone. */
+.navitem { position: relative; }
+.navitem-active::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px;
+  background: var(--accent);
+}
+
+/* Cards that carry a verdict tint their left edge with it, so scanning a column of results reads
+   as a shape before it reads as words. */
+.edge { border-left-width: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .row-new, .bump, .live-dot::after { animation: none; }
+  .btn-primary:hover { transform: none; }
 }

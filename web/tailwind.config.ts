@@ -6,6 +6,10 @@ const v = (name: string) => `var(--${name})`;
 const config: Config = {
   darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  // The verdict badge builds its class from the action name at runtime (`badge-${action}`), so the scanner
+  // cannot see it. Without this, `badge-auto_repair` is purged and auto-repaired responses render with an
+  // unstyled badge, which is the one verdict a reviewer most needs to spot.
+  safelist: ["badge-pass", "badge-annotate", "badge-auto_repair", "badge-escalate", "badge-block"],
   theme: {
     extend: {
       colors: {

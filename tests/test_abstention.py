@@ -151,3 +151,17 @@ def test_text_without_a_disclaimer_is_returned_unchanged() -> None:
         "The refund window is 180 days, guaranteed, no doubt about it.",
     ]:
         assert split_abstention(text) == (text, [])
+
+
+def test_a_hedged_non_answer_is_an_abstention_not_a_claim():
+    """"I'm not certain" asserts nothing. Scored as a claim it looks maximally ungrounded and gets
+    repaired, which is the same defect as scoring an outright refusal."""
+    claim, declined = split_abstention("I'm not certain.")
+    assert claim == ""
+    assert declined == ["I'm not certain."]
+
+
+def test_a_specific_answer_is_still_a_claim():
+    claim, declined = split_abstention("The late fee is $35.")
+    assert claim == "The late fee is $35."
+    assert declined == []

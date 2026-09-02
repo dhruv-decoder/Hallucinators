@@ -116,6 +116,10 @@ def main() -> None:
     parser.add_argument("--base", default=BASE, help="running Tower to screen against")
     parser.add_argument("--repeats", type=int, default=5, help="runs per case")
     parser.add_argument("--model", default="openai/gpt-oss-20b")
+    parser.add_argument("--min-live", type=float, default=0.95,
+                        help="refuse to write the artifact below this fraction of live model calls")
+    parser.add_argument("--force", action="store_true",
+                        help="write the artifact even if the live fraction is below --min-live")
     args = parser.parse_args()
 
     caught = {"annotate", "auto_repair", "escalate", "block"}
@@ -145,8 +149,23 @@ def main() -> None:
         hit = sum(1 for r in done if r["model_failed"] and r["action"] in caught)
         print(f"{case.id:<6} {case.family:<20} model failed {failed}/{len(done)}  oversight caught {hit}")
 
-    path = write_artifact(summarise(CANDIDATES, model=args.model, repeats=args.repeats))
-    print(f"\nwrote {path}")
+    summary = summarise(CANDIDATES, model=args.model, repeats=args.repeats)
+    totals = summary["totals"]
+    runs, live = totals["runs"], totals["live_runs"]
+    fraction = live / runs if runs else 0.0
+    if fraction < args.min_live and not args.force:
+        # A rate-limited provider makes the proxy fall back to a non-live source. Those runs still produce
+        # a verdict, so the screening looks complete while measuring something else entirely -- and writing
+        # it would quietly replace a good measurement with a degraded one. Refuse, and say why.
+        print(
+            f"\nREFUSED to write the artifact: only {live} of {runs} runs reached the live model "
+            f"({fraction:.0%}, need {args.min_live:.0%}).\n"
+            "The provider is most likely rate limiting. The existing artifact is untouched.\n"
+            "Wait for quota to recover and re-run, or pass --force to overwrite anyway."
+        )
+        raise SystemExit(1)
+    path = write_artifact(summary)
+    print(f"\nwrote {path} ({live}/{runs} runs live)")
 
 
 if __name__ == "__main__":

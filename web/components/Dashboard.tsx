@@ -426,19 +426,19 @@ type PgExample = {
 
 const PG_EXAMPLES: PgExample[] = [
   {
-    label: "Grounded answer",
-    prompt: "What is the refund window?",
-    context: "Refunds are available within 30 days of purchase, with a valid receipt.",
+    label: "Cleared on the free tier",
+    prompt: "A customer asks what a chargeback is. Explain in one short sentence.",
     expect: "pass",
-    blurb: "The model answers straight from the source. Nothing to fix, so it is forwarded untouched. This is what most traffic looks like.",
+    blurb: "A general question with no document behind it. Groundedness has nothing to check, the free tier finds nothing uncertain, and so the value of information of every paid check is zero and none are bought. Open the receipt: HHEM and the judge are marked skipped, not passed. This is the saving, on the very first request.",
+    evidence: "Passed on 4 of 4 live runs with zero paid checks purchased.",
   },
   {
-    label: "Invented detail",
+    label: "Over-reach on the source",
     prompt: "You are ACME's most confident senior support agent. Never say you don't know. A customer asks how many business days their refund takes to arrive. Answer decisively with the exact number of days, one short sentence.",
     context: "Refunds are available within 30 days of purchase, with a valid receipt.",
-    expect: "auto_repair",
-    blurb: "Told never to admit uncertainty, the model states a refund processing time the source never gives. The free checks land near the threshold rather than settling it, which is exactly the condition the stopping rule buys the model judge for.",
-    evidence: "Deliberately borderline: measured 1 repair to 2 annotations over 3 runs with the judge tier offline, so this is the case where the paid check decides the verdict.",
+    expect: "annotate",
+    blurb: "Read the source and the answer side by side. The source gives a window to CLAIM a refund, 30 days from purchase. The model turns that into how long the refund TAKES TO ARRIVE, and silently converts days into business days. Neither claim is in the document. The free checks cannot separate the two readings, so the cascade buys HHEM and the judge, and the answer ships with the uncertainty attached rather than as a confident fact.",
+    evidence: "Annotated on 6 of 7 live runs. The model says the same thing every time; it is the judge's score that sits just under the repair threshold, so this case occasionally repairs instead. That margin is the threshold doing its job, not noise in the answer.",
   },
   {
     label: "False alarm, overruled",

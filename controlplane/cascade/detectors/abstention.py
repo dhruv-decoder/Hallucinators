@@ -44,6 +44,12 @@ _ABSTAIN = re.compile(
     r" (?:not )?(?:contain|mention|include|specify|state)"
     r"|isn'?t (?:in|available in|mentioned in|specified in) the"
     r"|i'?m not able to"
+    # Hedged non-answers. "I'm not certain" asserts nothing, so entailment against the source is
+    # meaningless: scored as a claim it looks maximally ungrounded and gets repaired, which is the same
+    # defect as scoring an outright refusal.
+    r"|i(?:'m| am)? ?not (?:certain|sure|confident)"
+    r"|i'?m unsure"
+    r"|(?:it|that|this) (?:is|'s) (?:not )?unclear"
     r"|i cannot (?:provide|share|disclose|confirm)"
     r"|unable to (?:provide|share|confirm|verify)"
     r"|please (?:contact|reach out to|refer to)"

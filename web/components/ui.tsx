@@ -1,6 +1,7 @@
 "use client";
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export const cn = (...a: any[]) => clsx(a);
 
@@ -80,27 +81,100 @@ export function ProgressBar({ progress, label }: { progress: number; label?: str
   );
 }
 
-/* ---- explanation affordances ---------------------------------------------------------------- */
+/* ---- explanation affordances ----------------------------------------------------------------
+   Tooltips render into a portal on the body rather than inside the element they describe. Anything
+   else gets clipped: tables scroll horizontally, lists scroll vertically, and the page itself clips
+   its horizontal overflow, so an absolutely-positioned bubble is cut off by whichever ancestor it
+   happens to sit inside. Fixed positioning plus a clamp to the viewport is the only arrangement that
+   works everywhere, including for a term in the first column or the last. */
 
-/** A small marker that reveals an explanation on hover. Use on any metric, threshold, or piece of jargon. */
-export function Info({ text, align = "center" }: { text: string; align?: "center" | "right" }) {
+type Placement = { left: number; top: number; arrow: number; below: boolean };
+
+const GAP = 9;      // space between the anchor and the bubble
+const MARGIN = 10;  // keep this far clear of the viewport edges
+
+function useTooltip() {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const bubble = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<Placement | null>(null);
+
+  // Measure after the bubble exists but before paint, so it never appears in the wrong position first.
+  useLayoutEffect(() => {
+    if (!open || !anchor.current || !bubble.current) return;
+    const a = anchor.current.getBoundingClientRect();
+    const b = bubble.current.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+
+    // Prefer above; flip below when there is not enough room up there.
+    const below = a.top - b.height - GAP < MARGIN && a.bottom + b.height + GAP < vh - MARGIN;
+    const top = below ? a.bottom + GAP : a.top - b.height - GAP;
+
+    // Centre on the anchor, then clamp so the bubble always stays fully on screen.
+    const wanted = a.left + a.width / 2 - b.width / 2;
+    const left = Math.min(Math.max(wanted, MARGIN), Math.max(MARGIN, vw - b.width - MARGIN));
+
+    // The arrow keeps pointing at the anchor even after the bubble has been clamped away from it.
+    const arrow = Math.min(Math.max(a.left + a.width / 2 - left, 14), Math.max(14, b.width - 14));
+    setPlace({ left, top, arrow, below });
+  }, [open]);
+
+  // A tooltip anchored to a moving target is worse than none, so dismiss on scroll or resize.
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => { window.removeEventListener("scroll", close, true); window.removeEventListener("resize", close); };
+  }, [open]);
+
+  return { anchor, bubble, open, setOpen, place };
+}
+
+function TipBubble({ text, place, innerRef }: {
+  text: React.ReactNode; place: Placement | null; innerRef: React.RefObject<HTMLDivElement>;
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div ref={innerRef} role="tooltip" className={cn("tip-pop", place && "tip-pop-in")}
+      style={place ? { left: place.left, top: place.top } : { left: -9999, top: -9999 }}>
+      {text}
+      {place && (
+        <span className={cn("tip-arrow", place.below && "tip-arrow-up")} style={{ left: place.arrow }} />
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+/** A small marker that reveals an explanation on hover or focus. */
+export function Info({ text }: { text: string; align?: "center" | "right" }) {
+  const t = useTooltip();
   return (
-    <span className={cn("tip", align === "right" && "tip-right")} tabIndex={0} role="note">
-      <span className="tip-dot" aria-hidden>i</span>
-      <span className="tip-body">{text}</span>
-    </span>
+    <>
+      <span ref={t.anchor} className="tip-dot" tabIndex={0} role="note" aria-label={text}
+        onMouseEnter={() => t.setOpen(true)} onMouseLeave={() => t.setOpen(false)}
+        onFocus={() => t.setOpen(true)} onBlur={() => t.setOpen(false)}>i</span>
+      {t.open && <TipBubble text={text} place={t.place} innerRef={t.bubble} />}
+    </>
   );
 }
 
 /** Wraps any element to give it a hover explanation. Pair with `tip-term` to mark the text visually. */
-export function Tip({ text, children, align = "center", className }: {
+export function Tip({ text, children, className }: {
   text: string; children: React.ReactNode; align?: "center" | "right"; className?: string;
 }) {
+  const t = useTooltip();
   return (
-    <span className={cn("tip", align === "right" && "tip-right", className)} tabIndex={0}>
-      {children}
-      <span className="tip-body">{text}</span>
-    </span>
+    <>
+      <span ref={t.anchor} className={cn("inline-flex items-center", className)} tabIndex={0}
+        onMouseEnter={() => t.setOpen(true)} onMouseLeave={() => t.setOpen(false)}
+        onFocus={() => t.setOpen(true)} onBlur={() => t.setOpen(false)}>
+        {children}
+      </span>
+      {t.open && <TipBubble text={text} place={t.place} innerRef={t.bubble} />}
+    </>
   );
 }
 

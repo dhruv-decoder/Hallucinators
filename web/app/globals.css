@@ -130,35 +130,37 @@ input[type=range] { height: 4px; border-radius: 999px; background: var(--line-2)
    Detail lives here rather than on the surface, so a panel can stay quiet and still answer
    every question a first-time reader has.
    ============================================================================================ */
-.tip { position: relative; display: inline-flex; align-items: center; }
-.tip > .tip-body {
-  position: absolute; bottom: calc(100% + 9px); left: 50%; transform: translateX(-50%) translateY(4px);
-  z-index: 70; width: max-content; max-width: 300px; padding: 9px 11px;
-  border-radius: 9px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink);
+/* The bubble lives on the body, positioned by script, so no scrolling or clipping ancestor can cut
+   it off and it can never run past a viewport edge. */
+.tip-pop {
+  position: fixed; z-index: 200; width: max-content; max-width: min(320px, calc(100vw - 20px));
+  padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line-2);
+  background: var(--panel-2); color: var(--ink);
   font-size: 12.5px; line-height: 1.5; font-weight: 400; text-align: left; text-transform: none;
-  letter-spacing: 0; box-shadow: var(--shadow); pointer-events: none; opacity: 0; visibility: hidden;
-  transition: opacity .14s ease, transform .14s ease, visibility .14s;
+  letter-spacing: 0; box-shadow: var(--shadow); pointer-events: none;
+  opacity: 0; transform: translateY(3px); transition: opacity .12s ease, transform .12s ease;
 }
-.tip:hover > .tip-body, .tip:focus-visible > .tip-body { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
-.tip > .tip-body::after {
-  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+.tip-pop-in { opacity: 1; transform: none; }
+
+.tip-arrow {
+  position: absolute; top: 100%; margin-left: -5px;
   border: 5px solid transparent; border-top-color: var(--line-2);
 }
-/* Near the right edge a centred tooltip would overflow, so those anchor right instead. */
-.tip-right > .tip-body { left: auto; right: 0; transform: translateY(4px); }
-.tip-right:hover > .tip-body, .tip-right:focus-visible > .tip-body { transform: translateY(0); }
-.tip-right > .tip-body::after { left: auto; right: 10px; transform: none; }
+.tip-arrow-up { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--line-2); }
 
+/* The marker itself: small enough to sit inside a label without disturbing it. */
 .tip-dot {
   display: inline-flex; height: 14px; width: 14px; flex: none; cursor: help; align-items: center;
   justify-content: center; border-radius: 999px; border: 1px solid var(--line-2);
   font-size: 9px; font-weight: 600; color: var(--faint); text-transform: none; letter-spacing: 0;
   transition: border-color .15s ease, color .15s ease;
 }
-.tip:hover > .tip-dot { border-color: var(--accent); color: var(--accent); }
+.tip-dot:hover, .tip-dot:focus-visible { border-color: var(--accent); color: var(--accent); }
+
 /* A term carrying an explanation gets a quiet underline so it is discoverable without shouting. */
 .tip-term { cursor: help; border-bottom: 1px dashed var(--line-2); transition: border-color .15s ease; }
-.tip:hover .tip-term { border-bottom-color: var(--accent); }
+[tabindex]:hover > .tip-term, [tabindex]:focus-visible > .tip-term,
+.tip-term:hover { border-bottom-color: var(--accent); }
 
 /* ============================================================================================
    DATA SURFACES

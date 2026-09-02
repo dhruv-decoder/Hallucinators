@@ -4,7 +4,7 @@ import {
   Activity, BarChart3, Boxes, Check, ChevronsUpDown, Crosshair, Cpu, Download, FlaskConical, Gauge, GitCompareArrows, History, Inbox, Info as InfoIcon, LayoutGrid, LifeBuoy, LogOut, MousePointerClick,
   Play, Plus, Radio, RotateCcw, Rss, ScrollText, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, ThumbsDown, ThumbsUp, Wallet, Workflow, X,
 } from "lucide-react";
-import { Action, AgentReceipt, api, Axis, BenchmarkEval, BenchmarkStrategy, ControlRow, EstimateMethod, GeneratedPolicy, HardCases as HardCasesData, PlaygroundResult, Receipt, RuntimeObservability, Scenario, Signal, StreamGuardCase, Summary, Transcript, UseCaseSpec, VoIContrast, VoIStep } from "@/lib/api";
+import { Action, AgentReceipt, api, Axis, BenchmarkEval, BenchmarkStrategy, CacheDemo as CacheDemoData, ControlRow, EstimateMethod, GeneratedPolicy, HardCases as HardCasesData, PlaygroundResult, Receipt, RuntimeObservability, Scenario, Signal, StreamGuardCase, Summary, Transcript, UseCaseSpec, VoIContrast, VoIStep } from "@/lib/api";
 import { createWorkspace, logout, setWorkspace, useAuth } from "@/lib/auth";
 import { ACTION_COLOR, AXIS_COLOR, fmtEta, usd, worstAxis } from "@/lib/format";
 import { Badge, BrandMark, Card, cn, EmptyState, Info, Kpi, Legend, LegendItem, Modal, ProgressBar, StackedBar, Tip, toast, Toaster } from "./ui";
@@ -53,8 +53,12 @@ const TITLES: Record<View, [string, string]> = {
   api: ["API and integration", "One line, OpenAI-compatible. A gateway, not only a dashboard"],
   help: ["Getting started", "What this is, and how to read it"],
 };
-export default function Dashboard({ onHome }: { onHome?: () => void }) {
-  const [view, setView] = useState<View>("overview");
+const VIEW_IDS = new Set(NAV.flatMap((g) => g.items.map((i) => i.id)));
+const asView = (v: string | null | undefined): View | null =>
+  v && VIEW_IDS.has(v as View) ? (v as View) : null;
+
+export default function Dashboard({ onHome, initialView }: { onHome?: () => void; initialView?: string | null }) {
+  const [view, setView] = useState<View>(asView(initialView) ?? "overview");
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [net, setNet] = useState<number[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -1766,6 +1770,99 @@ function useJob() {
   return { prog, run };
 }
 
+/** Ask the same question twice and show what the second call actually cost. */
+function CacheDemo() {
+  const [res, setRes] = useState<CacheDemoData | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try { setRes(await api.cacheDemo()); }
+    catch (e) { toast("Could not run", String(e), "err"); }
+    setBusy(false);
+  };
+  const first = res?.calls[0];
+  const second = res?.calls[1];
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h4 className="t-h2">See it happen</h4>
+          <p className="t-meta mt-0.5 prose-w">
+            Sends one question twice. Watch the upstream counter: if it does not move on the second call,
+            the model was genuinely never asked.
+          </p>
+        </div>
+        <button className="btn-primary inline-flex flex-none items-center gap-1.5" disabled={busy} onClick={run}>
+          <Play size={14} />{busy ? "Running…" : "Ask twice"}
+        </button>
+      </div>
+
+      {res && first && second && (
+        <>
+          <div className="grid grid-cols-2 items-start gap-3 max-md:grid-cols-1">
+            {[first, second].map((c, i) => (
+              <div key={i} className="edge rounded-lg border border-line bg-panel-2 p-3.5"
+                style={{ borderLeftColor: c.reached_the_model ? "var(--escalate)" : "var(--pass)" }}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="t-label">call {i + 1}</span>
+                  <Tip text={c.reached_the_model
+                    ? "The answer was not in the cache, so the model was called and paid for."
+                    : "The answer was already stored, so this request never reached the model at all."}>
+                    <span className={cn("badge tip-term", c.reached_the_model ? "badge-escalate" : "badge-pass")}>
+                      {c.reached_the_model ? "called the model" : `${c.kind} cache hit`}
+                    </span>
+                  </Tip>
+                </div>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[12.5px]">
+                  <dt className="text-muted">latency</dt>
+                  <dd className="num text-right" style={{ color: c.reached_the_model ? undefined : "var(--pass)" }}>
+                    {c.latency_ms.toFixed(2)} ms
+                  </dd>
+                  <dt className="text-muted">upstream calls</dt>
+                  <dd className="num text-right">
+                    {c.upstream_calls_before} <span className="text-faint">to</span> {c.upstream_calls_after}
+                  </dd>
+                </dl>
+              </div>
+            ))}
+          </div>
+
+          <div className="note note-accent mt-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <Tip text="Wall-clock time the second call saved by not calling the model.">
+                <span className="tip-term text-[13px]">
+                  <b className="num text-pass">{res.latency_saved_ms.toFixed(0)} ms</b>
+                  <span className="text-muted"> saved</span>
+                </span>
+              </Tip>
+              <Tip text="What the second generation would have cost at published list prices, at the token counts the first one actually used.">
+                <span className="tip-term text-[13px]">
+                  <b className="num text-pass">{usd(res.model_cost_avoided_usd)}</b>
+                  <span className="text-muted"> not spent</span>
+                </span>
+              </Tip>
+              <Tip text="Both calls returned the same text, so nothing was traded away for the saving.">
+                <span className="tip-term text-[13px]">
+                  <b className={res.identical_response ? "text-pass" : "text-block"}>
+                    {res.identical_response ? "identical" : "differs"}
+                  </b>
+                  <span className="text-muted"> answer</span>
+                </span>
+              </Tip>
+            </div>
+            <p className="t-meta mt-2.5">{res.note}</p>
+          </div>
+
+          <div className="mt-3">
+            <div className="t-label mb-1.5">The answer, served both times</div>
+            <div className="code whitespace-pre-wrap">{second.response || "(empty response)"}</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function RuntimeHealth() {
   const [obs, setObs] = useState<RuntimeObservability | null>(null);
   const [cache, setCache] = useState<Awaited<ReturnType<typeof api.cache>> | null>(null);
@@ -1832,7 +1929,8 @@ function RuntimeHealth() {
         )}
       </Card>
 
-      <Card title="Semantic response cache" desc="Cache hits avoid upstream generation while still passing through the normal policy/oversight path.">
+      <Card title="Response cache"
+        desc="A repeat request reuses the stored answer and never reaches the model. This is one of the levers that funds the safety checks, so it is worth being able to check rather than take on trust.">
         <div className="kpi-grid">
           <Kpi info={TERM.cache_entries} label="entries" value={cache?.entries ?? "-"} />
           <Kpi info={TERM.cache_hit_rate} label="hit rate" value={cache && (cache.cache_hits + cache.cache_misses) ? `${((cache.cache_hits / (cache.cache_hits + cache.cache_misses)) * 100).toFixed(1)}%` : "-"} />
@@ -1840,6 +1938,7 @@ function RuntimeHealth() {
           <Kpi info={TERM.semantic_hit} label="semantic hits" value={cache?.semantic_cache_hits ?? "-"} />
           <Kpi info={TERM.upstream_calls} label="upstream calls" value={cache?.upstream_calls ?? "-"} />
         </div>
+        <CacheDemo />
       </Card>
 
       <Card title="Service readiness" desc="Bounded concurrency protects the oversight layer itself under load.">
@@ -1851,7 +1950,8 @@ function RuntimeHealth() {
       </Card>
       <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
         <Card title="Tier activity" desc="Where detector runs landed during live traffic. A healthy shape is a large free tier with a small paid tail.">
-          <div className="kpi-grid">
+          {/* Three tiers always read as one row: wrapping them implies a grouping that does not exist. */}
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             {(["T0", "T1", "T2"] as const).map((t) => (
               <Kpi key={t} label={t} value={`${obs?.tier_counts?.[t] ?? 0}`}
                 foot={t === "T0" ? "free" : t === "T1" ? "cheap models" : "model judge"}

@@ -116,6 +116,17 @@ export interface RuntimeObservability {
   config: { max_concurrency: number; queue_timeout_ms: number; upstream_timeout_s: number; upstream_retries: number };
 }
 
+export interface CacheDemoCall {
+  cache_hit: boolean; kind: string; latency_ms: number;
+  upstream_calls_before: number; upstream_calls_after: number; reached_the_model: boolean;
+  input_tokens: number; output_tokens: number; response: string;
+}
+export interface CacheDemo {
+  prompt: string; context: string; model: string; calls: CacheDemoCall[];
+  identical_response: boolean; model_cost_avoided_usd: number; latency_saved_ms: number;
+  cache: CacheStatus; note: string;
+}
+
 export interface HardCaseFamily {
   id: string; source: string; why: string;
   cases: number; runs: number; model_failed: number; caught: number; flagged_safe: number;
@@ -205,6 +216,7 @@ export const api = {
   informativeness: () => jget<InformativenessStatus>('/v1/oversight/informativeness'),
   benchmark: () => jget<BenchmarkEval>('/v1/oversight/benchmark'),
   hardCases: () => jget<HardCases>('/v1/oversight/hard-cases'),
+  cacheDemo: () => jpost<CacheDemo>('/v1/oversight/cache-demo'),
   voiContrast: () => jget<VoIContrast>('/v1/oversight/voi-contrast'),
   streamGuard: () => jget<StreamGuardDemo>('/v1/oversight/streamguard-demo'),
 };

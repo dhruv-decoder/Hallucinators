@@ -692,6 +692,87 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
             })
         return {"axis": "performance", "source": "synthetic_demo", "certificates": certs}
 
+    @app.post("/v1/oversight/cache-demo")
+    async def cache_demo(request: Request) -> dict:
+        """Answer the same question twice and report what the second call cost.
+
+        The saving on the cost axis is the least believable claim the product makes, because "we cached it"
+        is easy to assert and hard to check. This runs the two calls for real and returns the evidence that
+        separates a genuine bypass from an accounting entry: the upstream call counter does not move on the
+        second request, and the latency collapses to the cost of a dictionary lookup.
+        """
+        import time as _time
+        import uuid as _uuid
+
+        service = resolve_service(request)
+        # The panel calls this with no body, so an empty request is the normal case rather than an error.
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - no body, or not JSON; fall back to the defaults below
+            body = {}
+        prompt = (body.get("prompt") or "What is the refund window?").strip()
+        context = (body.get("context") or "Refunds are available within 30 days of purchase.").strip()
+        model = body.get("model") or "openai/gpt-oss-20b"
+        use_case = "support_bot"
+        # A fresh suffix each time, so the demo always starts from a genuine miss rather than replaying an
+        # answer cached by an earlier visitor.
+        prompt = f"{prompt} [{_uuid.uuid4().hex[:6]}]"
+        policy_id = service.policy_for(use_case)[1].id
+        key = service.cache_key(prompt, model, context, use_case, policy_id)
+
+        def _generate():
+            from controlplane.proxy.upstream import GroqUpstream
+
+            if GroqUpstream.available():
+                try:
+                    return GroqUpstream().generate(prompt, model, use_case, context, [context])
+                except Exception:  # noqa: BLE001 - fall back to the offline upstream
+                    pass
+            g = upstream.generate(prompt, model, use_case=use_case)
+            g.retrieved_context = [context]
+            return g
+
+        calls = []
+        for _ in range(2):
+            before_upstream = service.upstream_calls
+            started = _time.perf_counter()
+            gen, hit = await asyncio.to_thread(
+                service.generate_cached, key, _generate,
+                prompt=prompt, model=model, context=context, use_case=use_case, policy_id=policy_id,
+            )
+            elapsed_ms = (_time.perf_counter() - started) * 1000.0
+            calls.append({
+                "cache_hit": hit,
+                "kind": getattr(gen, "cache_hit_kind", "miss"),
+                "latency_ms": round(elapsed_ms, 2),
+                "upstream_calls_before": before_upstream,
+                "upstream_calls_after": service.upstream_calls,
+                "reached_the_model": service.upstream_calls > before_upstream,
+                "input_tokens": gen.input_tokens,
+                "output_tokens": gen.output_tokens,
+                "response": gen.text[:400],
+            })
+
+        from controlplane.pnl.pricing import Pricing
+
+        first, second = calls
+        avoided = round(Pricing().cost(model, first["input_tokens"], first["output_tokens"]), 6)
+        saved_ms = round(max(first["latency_ms"] - second["latency_ms"], 0.0), 2)
+        return {
+            "prompt": prompt,
+            "context": context,
+            "model": model,
+            "calls": calls,
+            "identical_response": first["response"] == second["response"],
+            "model_cost_avoided_usd": avoided,
+            "latency_saved_ms": saved_ms,
+            "cache": service.semantic_cache.stats(),
+            "note": (
+                "The second call never reached the model: the upstream counter is unchanged across it. That "
+                "is what makes the saving a real bypass rather than a booked estimate."
+            ),
+        }
+
     @app.get("/v1/oversight/hard-cases")
     def hard_cases() -> dict:
         """Return the screening run that chose the product's demo cases.

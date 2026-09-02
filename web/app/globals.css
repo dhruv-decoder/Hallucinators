@@ -254,3 +254,20 @@ input[type=range] { height: 4px; border-radius: 999px; background: var(--line-2)
   .row-new, .bump, .live-dot::after { animation: none; }
   .btn-primary:hover { transform: none; }
 }
+
+/* A secondary button that opens something worth opening. The derivations and calculations are the most
+   load-bearing thing on their panels and were reading as ordinary chrome, so they get a tinted ground and
+   a ring on hover. Still secondary to the primary action, just no longer invisible. */
+.btn-reveal {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+}
+.btn-reveal:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+  transform: translateY(-1px);
+}
+.btn-reveal:active { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .btn-reveal:hover { transform: none; } }

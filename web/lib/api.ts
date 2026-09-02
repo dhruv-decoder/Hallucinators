@@ -108,7 +108,10 @@ export interface VoICase {
   bought_a_check: boolean; stopping_reason: string;
   expensive_checks: { detector: string; tier: number; ran: boolean; p_fail_before: number; voi: number; check_cost: number; reason: string }[];
 }
-export interface VoIContrast { policy_id: string; safe: VoICase; uncertain: VoICase; note: string }
+export interface VoICaseRow extends VoICase { label: string; why: string }
+export interface VoIContrast {
+  policy_id: string; cases: VoICaseRow[]; safe: VoICase; uncertain: VoICase; note: string;
+}
 export interface RuntimeObservability {
   uptime_seconds: number; requests: number; active_requests: number; throughput_rps: number; errors: number; overload_rejections: number; stream_aborts: number; max_concurrency: number;
   latency_ms: { p50: number; p95: number; p99: number; sample_count: number };

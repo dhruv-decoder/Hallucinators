@@ -1,6 +1,6 @@
 # Blessed entry points. Everything a stranger needs to run the project lives here.
 
-.PHONY: help install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live voi-contrast eval eval-real eval-aggregate eval-eta conformal-real experiment calibration serve traffic web-install web-dev web-build lint clean
+.PHONY: help hard-cases install install-serve install-semantic-cache test demo whatif thermostat agent rag agent-live voi-contrast eval eval-real eval-aggregate eval-eta conformal-real experiment calibration serve traffic web-install web-dev web-build lint clean
 
 help:
 	@echo "make install    - create .venv and install the core engine + dev tools"
@@ -18,6 +18,7 @@ help:
 	@echo "make eval       - run the evaluation harness on the synthetic seed (P/R/F1/FPR/FNR, baselines)"
 	@echo "make eval-real  - eval on a real benchmark (HaluEval), now with 95% CIs; add ARGS='--models' for HHEM"
 	@echo "make eval-aggregate - leakage-aware aggregate public-data benchmark; add ARGS='--dataset halueval --limit 500 --warmup 20 --repeats 3'"
+	@echo "make hard-cases - screen candidate failure cases against the live model (needs a running Tower)"
 	@echo "make eval-eta   - fit detector informativeness η from leakage-safe HaluEval forced-check data"
 	@echo "make conformal-real - build real-data escaped-failure conformal certificates"
 	@echo "make serve      - run The Tower: proxy + dashboard (:8000); serves the React UI if web/out exists, else lite"
@@ -88,6 +89,10 @@ eval-aggregate:
 
 eval-eta:
 	$(VENV_PYTHON) -m controlplane.eval.run_eta $(ARGS)
+
+hard-cases:
+	$(VENV_PYTHON) -m controlplane.eval.run_hard_cases $(ARGS)
+	@echo "Wrote artifacts/hard_cases.json -- the Hard cases panel reads it"
 
 conformal-real:
 	$(VENV_PYTHON) -m controlplane.eval.run_conformal_real --dataset halueval --limit 1000 $(ARGS)

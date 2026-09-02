@@ -130,7 +130,7 @@ def apply_action(
             action=Action.ESCALATE,
             text=(
                 "This response was flagged for human review by ControlPlane (high-stakes and uncertain) "
-                "and is awaiting an agent. — provisional draft below —\n" + safe
+                "and is awaiting an agent. Provisional draft below.\n" + safe
             ),
             modified=bool(counts),
             note="escalated to a human reviewer",

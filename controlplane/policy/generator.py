@@ -227,7 +227,7 @@ def generate_policy(spec: UseCaseSpec) -> GeneratedPolicy:
         "caveats": [
             "Volume is the figure you entered, not observed traffic.",
             "Per-request net is anchored on this deployment's measured runs; your traffic mix will differ.",
-            "Human review cost is excluded from the net — it is shown as its own line so the automated "
+            "Human review cost is excluded from the net. It is shown as its own line so the automated "
             "and the human economics never get blended.",
             "Latency is the oversight layer's overhead only; it excludes the model call.",
         ],

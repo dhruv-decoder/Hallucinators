@@ -218,7 +218,7 @@ export function Architecture({ onLaunch }: { onLaunch: (view?: string) => void }
         <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2 max-sm:grid-cols-1">
           {([
             ["Playground", "Send your own prompt and watch a real model get overseen.", "playground"],
-            ["Hard cases", "Which failure modes still break a modern model, measured over repeated live runs.", "hardcases"],
+            ["Where models fail", "Which failure modes still break a modern model, measured over repeated live runs.", "hardcases"],
             ["Public benchmarks", "Fixed model checking against this cascade on the same labelled examples.", "benchmarks"],
             ["Risk guarantee", "A certificate bounding how often real failures escape, with the derivation.", "guarantee"],
           ] as [string, string, string][]).map(([t, d, v]) => (

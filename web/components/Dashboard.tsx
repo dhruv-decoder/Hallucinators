@@ -14,7 +14,8 @@ import { Eq, M, Step } from "./math";
 
 type View = "playground" | "configure" | "guarantee" | "overview" | "feed" | "review" | "quadrant" | "pnl" | "voi" | "hardcases" | "benchmarks" | "benchmark" | "runtime" | "replay" | "streamguard" | "agents" | "compliance" | "detectors" | "api" | "help";
 const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] = [
-  { group: "Set up", items: [
+  { group: "Start", items: [
+    { id: "help", label: "Getting started", icon: LifeBuoy },
     { id: "playground", label: "Playground", icon: FlaskConical },
     { id: "configure", label: "Use-case setup", icon: SlidersHorizontal } ] },
   { group: "Monitor", items: [
@@ -22,14 +23,14 @@ const NAV: { group: string; items: { id: View; label: string; icon: any }[] }[] 
     { id: "review", label: "Review queue", icon: Inbox },
     { id: "quadrant", label: "Confidently wrong", icon: Crosshair }, { id: "pnl", label: "Oversight P&L", icon: Wallet } ] },
   { group: "Prove", items: [
-    { id: "voi", label: "VoI contrast", icon: GitCompareArrows }, { id: "hardcases", label: "Hard cases", icon: FlaskConical },
+    { id: "voi", label: "VoI contrast", icon: GitCompareArrows }, { id: "hardcases", label: "Where models fail", icon: Crosshair },
     { id: "benchmarks", label: "Public benchmarks", icon: BarChart3 },
     { id: "guarantee", label: "Risk guarantee", icon: ShieldCheck }, { id: "benchmark", label: "Latency and scale", icon: Gauge },
     { id: "runtime", label: "Runtime health", icon: Activity }, { id: "replay", label: "What-if replay", icon: History },
     { id: "streamguard", label: "StreamGuard", icon: Radio }, { id: "agents", label: "Agent oversight", icon: Workflow } ] },
   { group: "Govern", items: [
     { id: "compliance", label: "Compliance", icon: ScrollText }, { id: "detectors", label: "Detectors and models", icon: Cpu },
-    { id: "api", label: "API and integration", icon: Terminal }, { id: "help", label: "Getting started", icon: LifeBuoy } ] },
+    { id: "api", label: "API and integration", icon: Terminal } ] },
 ];
 const TITLES: Record<View, [string, string]> = {
   playground: ["Playground", "Send any prompt to a real model and watch the response get overseen"],
@@ -41,7 +42,7 @@ const TITLES: Record<View, [string, string]> = {
   quadrant: ["Confidently wrong", "The danger zone: sure of itself, and wrong"],
   pnl: ["Oversight P&L", "What oversight costs, and what it saves"],
   voi: ["VoI contrast", "Same policy, two responses, one expensive check"],
-  hardcases: ["Hard cases", "Which failure modes still break a modern model, measured rather than assumed"],
+  hardcases: ["Where models fail", "Which failure modes still break a modern model, measured rather than assumed"],
   benchmarks: ["Public benchmarks", "Fixed HHEM against ControlPlane on the same labelled examples"],
   benchmark: ["Latency and scale", "The runtime overhead the oversight layer adds"],
   runtime: ["Runtime health", "Live telemetry, saturation protection and detector cost"],
@@ -2057,7 +2058,7 @@ function HardCases() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card title="Which failures are still real"
+      <Card title="Which failures are still real in 2026"
         desc="Instruction-tuned models refuse the obvious bait, so which prompts still break one is a question to measure rather than assume. Every case below was sent to the live model repeatedly, recording what the model did and what oversight did about it, independently.">
         <div className="kpi-grid">
           <Kpi label="Cases screened" value={t.cases} foot={`across ${data.families.length} families`}
@@ -2079,7 +2080,7 @@ function HardCases() {
       </Card>
 
       <Card title="By failure family"
-        desc="Each family is a published line of work on one way models still fail. Two of these still break the model reliably. The rest it now handles, which is worth saying plainly.">
+        desc="Each family comes from a published line of work on one way language models fail. Two of them still break this model on every run. It handles the other three, and reporting that is what makes the first two worth acting on.">
         <div className="scroll-x">
           <table className="tbl">
             <thead>

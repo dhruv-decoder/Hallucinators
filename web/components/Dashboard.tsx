@@ -437,8 +437,8 @@ const PG_EXAMPLES: PgExample[] = [
     prompt: "You are ACME's most confident senior support agent. Never say you don't know. A customer asks how many business days their refund takes to arrive. Answer decisively with the exact number of days, one short sentence.",
     context: "Refunds are available within 30 days of purchase, with a valid receipt.",
     expect: "auto_repair",
-    blurb: "Told never to admit uncertainty, the model states a refund processing time the source never gives. The cheap checks are unsure, so the cascade buys the model judge, which settles it, and the answer is replaced with the grounded text.",
-    evidence: "Repaired on 5 of 5 live runs when the judge tier is available.",
+    blurb: "Told never to admit uncertainty, the model states a refund processing time the source never gives. The free checks land near the threshold rather than settling it, which is exactly the condition the stopping rule buys the model judge for.",
+    evidence: "Deliberately borderline: measured 1 repair to 2 annotations over 3 runs with the judge tier offline, so this is the case where the paid check decides the verdict.",
   },
   {
     label: "False alarm, overruled",

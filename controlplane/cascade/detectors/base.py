@@ -36,6 +36,18 @@ class Detector(abc.ABC):
     est_latency_ms: float = 1.0
     #: Prior on how much of the remaining uncertainty this detector resolves, in [0, 1].
     informativeness: float = 0.5
+    #: What this detector *estimates*. Detectors sharing a construct are rival estimates of the same thing
+    #: (a lexical groundedness proxy, an NLI cross-encoder, and an LLM judge all answer "is this claim
+    #: supported by the source?"), not independent evidence. The engine keeps the best -- highest-tier --
+    #: estimate that actually ran rather than compounding them, which is what makes climbing a tier
+    #: worthwhile: the expensive check *replaces* the cheap proxy's guess instead of piling on top of it.
+    #: Empty means "its own construct" (a group of one), so an unannotated detector behaves as before.
+    construct: str = ""
+
+    @property
+    def construct_key(self) -> str:
+        """The construct group this detector belongs to (its own name when it declares none)."""
+        return self.construct or self.name
 
     def applicable(self, ctx: RequestContext) -> bool:
         """Whether this detector can assess the request at all.

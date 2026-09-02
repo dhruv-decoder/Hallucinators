@@ -40,13 +40,24 @@ def _p(result: CascadeResult, axis: Axis) -> float:
     return outcome.p_fail if outcome else 0.0
 
 
-def _grounded_correction(context: list[str]) -> str | None:
-    """Build a faithful answer from the retrieved context, or None if there is nothing to ground on."""
+def _grounded_correction(context: list[str]) -> tuple[str, dict[str, int]] | None:
+    """Build a faithful answer from the retrieved context, or None when no faithful answer is available.
+
+    Two conditions have to hold before an answer is rewritten, because a wrong repair is worse than no
+    repair: the user is told the corrected text is authoritative, so we only claim that when it is.
+
+    1. **The source must be unambiguous.** With several retrieved passages there is no way to know which one
+       governs, and taking the first is arbitrary: on a knowledge base holding both an old and a current
+       policy it silently reinstates the outdated one. Ambiguous sources are a decision for a person, so we
+       return None and the response escalates instead.
+    2. **The correction must be safe to send.** Retrieved context is source data -- a support ticket, a CRM
+       record -- and can itself carry identifiers, so it is redacted first. Otherwise repairing a
+       hallucination would turn a performance fix into a privacy leak on the very path meant to be safest.
+    """
     chunks = [c.strip() for c in context if c and c.strip()]
-    if not chunks:
-        return None
-    # Answer from the single most relevant chunk (the reference store returns pre-ranked context).
-    return chunks[0]
+    if len(chunks) != 1:
+        return None  # nothing to ground on, or nothing that can be called authoritative
+    return redact_pii(chunks[0])
 
 
 def apply_action(
@@ -88,13 +99,19 @@ def apply_action(
         and resp_p < policy.escalate_threshold
         and engine_action == Action.ESCALATE
     ):
-        correction = _grounded_correction(retrieved_context)
-        if correction is not None:
+        # No faithful correction available (no source, or sources that disagree) falls through to the
+        # engine's action below, which holds the response for a human rather than guessing.
+        grounded = _grounded_correction(retrieved_context)
+        if grounded is not None:
+            correction, redacted = grounded
+            note = "auto-repaired: answer replaced with the grounded fact from retrieved context"
+            if redacted:
+                note += f" ({', '.join(sorted(redacted))} redacted from the source)"
             return AppliedAction(
                 action=Action.AUTO_REPAIR,
                 text=correction,
                 modified=True,
-                note="auto-repaired: answer replaced with the grounded fact from retrieved context",
+                note=note,
             )
 
     # 3. Otherwise honour the engine's action against the text.

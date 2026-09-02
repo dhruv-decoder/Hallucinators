@@ -74,7 +74,16 @@ class CascadeEngine:
         stopping rule runs more checks (risky regime), below 1.0 it relaxes. The default 1.0 is the plain
         VoI rule, so callers that do not use the thermostat are unaffected.
         """
-        result = CascadeResult(request_id=ctx.request_id, use_case=ctx.use_case)
+        # The text travels with the result so the receipt can show *what* was decided on, not just the
+        # scores. The recorder redacts it before it reaches the audit log (see recorder/receipt.py).
+        result = CascadeResult(
+            request_id=ctx.request_id,
+            use_case=ctx.use_case,
+            prompt=ctx.prompt,
+            response=ctx.response,
+            retrieved_context=list(ctx.retrieved_context),
+            model=ctx.model,
+        )
 
         # 1. Cost axis: run every (free) cost detector.
         for cost_detector in self.cost_detectors:
@@ -115,13 +124,31 @@ class CascadeEngine:
         cost_mitigate = self.policy.cost_mitigate.get(axis, 0.05)
 
         axis_signals: list[Signal] = []
-        probs: list[float] = []
+        # construct -> (tier, p_fail) for the best estimate of that construct so far. Detectors that measure
+        # the same thing are rivals, not independent witnesses: the T2 judge and the T0 lexical overlap both
+        # answer "is this supported by the source?", so noisy-OR-ing them lets three correlated guesses stack
+        # into near-certainty and -- worse -- makes it impossible for the expensive check to *clear* a
+        # response the cheap proxy got wrong. Keeping the highest-tier estimate per construct and combining
+        # across constructs is what makes climbing a tier worth paying for.
+        evidence: dict[str, tuple[int, float]] = {}
         p_after_t0 = 0.0
+
+        def record(detector: Detector, signal: Signal) -> None:
+            """Fold a signal into the axis evidence, superseding a lower tier of the same construct."""
+            if signal.detail.get("abstained"):
+                return  # a detector that declined to judge is not evidence of safety
+            key = detector.construct_key
+            current = evidence.get(key)
+            if current is None or int(detector.tier) >= current[0]:
+                evidence[key] = (int(detector.tier), signal.p_fail or 0.0)
+
+        def combined() -> float:
+            return voi.combine_probabilities([p for _, p in evidence.values()], self.combine_strategy)
 
         for detector in axis_detectors:
             if not detector.applicable(ctx):
                 # Nothing to work with (e.g. groundedness without context). Skip without paying.
-                p_now = voi.combine_probabilities(probs, self.combine_strategy)
+                p_now = combined()
                 result.trace.append(
                     VoIStep(
                         axis=axis,
@@ -143,8 +170,8 @@ class CascadeEngine:
                 signal.p_fail = self._calibrate(signal)
                 axis_signals.append(signal)
                 result.signals.append(signal)
-                probs.append(signal.p_fail)
-                p_current = voi.combine_probabilities(probs, self.combine_strategy)
+                record(detector, signal)
+                p_current = combined()
                 result.trace.append(
                     VoIStep(
                         axis=axis,
@@ -162,7 +189,7 @@ class CascadeEngine:
                 continue
 
             # Higher tiers: apply the stopping rule.
-            p_before = voi.combine_probabilities(probs, self.combine_strategy)
+            p_before = combined()
             decision = voi.decide_check(
                 p_fail=p_before,
                 cost_fail=cost_fail,
@@ -193,8 +220,8 @@ class CascadeEngine:
             signal.p_fail = self._calibrate(signal)
             axis_signals.append(signal)
             result.signals.append(signal)
-            probs.append(signal.p_fail)
-            p_after = voi.combine_probabilities(probs, self.combine_strategy)
+            record(detector, signal)
+            p_after = combined()
             result.trace.append(
                 VoIStep(
                     axis=axis,
@@ -209,7 +236,7 @@ class CascadeEngine:
                 )
             )
 
-        p_final = voi.combine_probabilities(probs, self.combine_strategy)
+        p_final = combined()
         outcome = AxisOutcome(
             axis=axis,
             p_fail=p_final,

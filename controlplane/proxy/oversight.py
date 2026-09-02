@@ -351,6 +351,14 @@ class OversightService:
         applied = apply_action(generation.text, result, policy, generation.retrieved_context)
         added_latency_ms = (time.perf_counter() - start) * 1000.0
 
+        # The engine chooses an action from the probabilities alone; the action layer can then upgrade it
+        # (an ESCALATE becomes an AUTO_REPAIR when a faithful grounded correction exists). The receipt must
+        # record what actually happened to the response, or the audit trail says "escalated" next to text
+        # that was in fact repaired and delivered -- and every count built on it disagrees with the feed.
+        if applied.action != result.action:
+            result.stopping_reason = f"{result.stopping_reason}; applied={applied.action.value} ({applied.note})"
+            result.action = applied.action
+
         # Mutating section: ledger totals, recorder hash chain, thermostat window, subscriber fan-out.
         with self._lock:
             pnl = self.ledger.book(ctx, result)
@@ -416,7 +424,7 @@ class OversightService:
         return self.jobs.start("benchmark", total=n, target=lambda job: run_benchmark(job, n, weekly_volume))
 
     def generate_overseen(self, prompt: str, model: str | None, use_case: str | None = None,
-                          request_id: str | None = None) -> OverseeResult:
+                          request_id: str | None = None, context: str | None = None) -> OverseeResult:
         """Generate + oversee one request through the real cache-bypass path (as /chat/completions uses).
 
         A repeated request reuses the stored generation and never calls the upstream again, so the
@@ -429,13 +437,15 @@ class OversightService:
         counterfactual) only on the real-model path -- see the Playground / chat_completions handlers.
         """
         policy_id = self.policy_for(use_case)[1].id
-        key = self.cache_key(prompt, model, None, use_case, policy_id)
+        key = self.cache_key(prompt, model, context, use_case, policy_id)
         gen, _cache_hit = self.generate_cached(
             key,
-            lambda: self.upstream.generate(prompt, model or "controlplane-sim", use_case=use_case),
+            lambda: self.upstream.generate(
+                prompt, model or "controlplane-sim", use_case=use_case, context=context
+            ),
             prompt=prompt,
             model=model,
-            context=None,
+            context=context,
             use_case=use_case,
             policy_id=policy_id,
         )
@@ -451,7 +461,9 @@ class OversightService:
         def _run(job: Job) -> dict:
             for _ in range(n):
                 for p in prompts:
-                    self.generate_overseen(p["prompt"], p.get("model"), use_case=p.get("use_case"))
+                    self.generate_overseen(
+                        p["prompt"], p.get("model"), use_case=p.get("use_case"), context=p.get("context")
+                    )
                     job.tick(1, message=f"processed {job.done + 1:,}/{total:,} interactions")
             return {"processed": total, **self.summary()}
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib.util
 from functools import lru_cache
 
+from controlplane.cascade.detectors.abstention import split_abstention
 from controlplane.cascade.detectors.base import Detector
 from controlplane.core.types import Axis, RequestContext, Tier
 
@@ -59,6 +60,7 @@ class HHEMGroundednessDetector(Detector):
     est_cost_usd = 0.0  # local inference: compute, not dollars
     est_latency_ms = 200.0  # nominal gate estimate; the real cost is metered from the signal timing
     informativeness = 0.8
+    construct = "groundedness"  # the model-backed upgrade of the lexical proxy, not extra evidence beside it
 
     @classmethod
     def available(cls) -> bool:
@@ -87,11 +89,20 @@ class HHEMGroundednessDetector(Detector):
         chunks = [c for c in ctx.retrieved_context if c and c.strip()]
         if not chunks or not (ctx.response or "").strip():
             return 0.0, {"abstained": True, "reason": "no context or empty response"}
+        # NLI entailment of a refusal is always low -- not because the model hallucinated but because it
+        # asserted nothing. Score the claim-bearing part only; abstain on a pure refusal. See abstention.py.
+        claim, declined = split_abstention(ctx.response)
+        if declined and not claim:
+            return 0.0, {"abstained": True, "reason": "response declined to answer; no claim to ground"}
+        hypothesis = claim or ctx.response
         try:
             model = _get_model()
             # HHEM scores (premise=source, hypothesis=claim); take the best-supporting chunk.
-            scores = model.predict([(chunk, ctx.response) for chunk in chunks])
+            scores = model.predict([(chunk, hypothesis) for chunk in chunks])
             consistency = max(float(s) for s in scores)
         except Exception as exc:  # noqa: BLE001 - a model load/inference failure must not break the pipeline
             return 0.0, {"abstained": True, "reason": f"hhem unavailable: {exc}"}
-        return 1.0 - consistency, {"hhem_consistency": round(consistency, 4), "chunks": len(chunks)}
+        detail = {"hhem_consistency": round(consistency, 4), "chunks": len(chunks)}
+        if declined:
+            detail["abstention_clauses_ignored"] = len(declined)
+        return 1.0 - consistency, detail

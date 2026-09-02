@@ -203,14 +203,19 @@ def test_aggregate_output_is_json_serializable(tmp_path):
 
 
 def test_final_ui_exposes_receipt_verification_and_cache():
+    """The UI must actually wire these capabilities up.
+
+    Asserted on the identifiers the UI calls, not on button copy: a wording change is a normal edit and
+    should not fail the suite, whereas dropping the call is a real regression.
+    """
     root = Path(__file__).resolve().parents[1]
     api = (root / "web/lib/api.ts").read_text(encoding="utf-8")
     ui = (root / "web/components/Dashboard.tsx").read_text(encoding="utf-8")
     assert "verifyReceipt" in api
     assert "cache:" in api
-    assert "Verify receipt & chain" in ui
-    assert "Semantic response cache" in ui
-    assert "Learned detector informativeness" in ui
+    assert "api.verifyReceipt(" in ui, "the receipt drawer must offer chain verification"
+    assert "api.cache(" in ui, "the runtime panel must report cache status"
+    assert "api.informativeness(" in ui, "the detectors panel must report learned informativeness"
 
 
 def test_render_uses_readiness_health_check_and_warmup():

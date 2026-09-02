@@ -30,6 +30,9 @@ _THRESHOLDS = {  # (block, escalate, annotate) by risk tolerance
     "high": (0.92, 0.7, 0.4),
 }
 _USE_CASES = {"customer_support", "internal_copilot", "decision_support", "agentic"}
+# How hard each risk appetite pushes the cascade to climb past the free tier. Named so the projection can
+# publish the constant it used rather than hiding a magic number inside the arithmetic.
+_VERIFY_PRESSURE = {"low": 1.0, "medium": 0.6, "high": 0.3}
 
 
 @dataclass
@@ -105,7 +108,7 @@ def generate_policy(spec: UseCaseSpec) -> GeneratedPolicy:
     # --- projection (estimates from the measured per-request economics) ---
     # A higher latency price and looser thresholds mean fewer paid checks -> lower added latency + fewer
     # escalations; regulated/low-tolerance means more. These are simple monotone estimates, labelled as such.
-    verify_pressure = {"low": 1.0, "medium": 0.6, "high": 0.3}[risk]
+    verify_pressure = _VERIFY_PRESSURE[risk]
     climb_fraction = min(0.45 * verify_pressure * (1.0 if latency != "realtime" else 0.6), 0.6)
     p95_added = round(0.2 + climb_fraction * (200.0 if latency == "batch" else 60.0), 1)
     escalation_rate = round(0.02 + 0.12 * verify_pressure, 3)
@@ -123,6 +126,113 @@ def generate_policy(spec: UseCaseSpec) -> GeneratedPolicy:
         "self_funding": monthly_net < 0,
         "note": "estimated from measured per-request economics at sourced prices; not a production bill",
     }
+
+    # --- how each projected number was derived ---------------------------------------------------
+    # Every figure above is a closed-form function of the spec, not a simulation and not a measurement.
+    # We publish the inputs, the formula, and the arithmetic for each one so a reader can check it by hand
+    # (and so nobody mistakes a projection for a bill). See `estimate_method` below for the caveats.
+    extra_net_note = (
+        "; -$0.0006 extra for a high-cache-hit use case"
+        if spec.use_case in ("customer_support", "agentic")
+        else ""
+    )
+    tier_latency_note = (
+        "batch tolerates the T2 model tier"
+        if latency == "batch"
+        else "interactive/real-time stays on the T1 tier"
+    )
+    steps = [
+        {
+            "metric": "Cleared at T0",
+            "value": f"{round(100.0 * (1.0 - climb_fraction), 1)}%",
+            "formula": "100 x (1 - climb_fraction)",
+            # LaTeX so the UI can typeset the rule and the substitution rather than printing ASCII.
+            "latex": r"\text{cleared}_{T0} = 100 \times (1 - f_{\text{climb}})",
+            "latex_substituted": (
+                rf"f_{{\text{{climb}}}} = \min(0.45 \times {verify_pressure} \times "
+                rf"{1.0 if latency != 'realtime' else 0.6},\; 0.60) = {round(climb_fraction, 4)}"
+            ),
+            "inputs": [
+                f"verify_pressure = {verify_pressure} (from risk tolerance '{risk}')",
+                f"realtime_discount = {1.0 if latency != 'realtime' else 0.6} (latency budget '{latency}')",
+            ],
+            "meaning": "share of responses the free T0 tier settles, so no paid check is ever bought for them",
+        },
+        {
+            "metric": "Added latency p95",
+            "value": f"{p95_added} ms",
+            "formula": "0.2 ms + climb_fraction x tier_latency",
+            "latex": r"\ell_{p95} = 0.2 + f_{\text{climb}} \times \ell_{\text{tier}}",
+            "latex_substituted": (
+                rf"\ell_{{p95}} = 0.2 + {round(climb_fraction, 4)} \times "
+                rf"{200.0 if latency == 'batch' else 60.0} = {p95_added}\ \text{{ms}}"
+            ),
+            "inputs": [
+                f"tier_latency = {200.0 if latency == 'batch' else 60.0} ms ({tier_latency_note})",
+            ],
+            "meaning": "the oversight layer's own p95 overhead; the model call itself is unchanged",
+        },
+        {
+            "metric": "Escalation rate",
+            "value": f"{round(escalation_rate * 100, 1)}%",
+            "formula": "2% base + 12% x verify_pressure",
+            "latex": r"r_{\text{esc}} = 0.02 + 0.12 \times p_{\text{verify}}",
+            "latex_substituted": rf"r_{{\text{{esc}}}} = 0.02 + 0.12 \times {verify_pressure} = {escalation_rate}",
+            "inputs": [f"verify_pressure = {verify_pressure} (risk tolerance '{risk}')"],
+            "meaning": "share routed to a person; lower risk tolerance deliberately escalates more",
+        },
+        {
+            "metric": "Human reviews per month",
+            "value": f"{human_reviews_month:,}",
+            "formula": "escalation_rate x weekly_volume x 4.345 weeks",
+            "latex": r"N_{\text{review}} = r_{\text{esc}} \times V_{\text{week}} \times 4.345",
+            "latex_substituted": (
+                rf"N_{{\text{{review}}}} = {escalation_rate} \times {spec.weekly_volume:,} "
+                rf"\times 4.345 = {human_reviews_month:,}".replace(",", "{,}")
+            ),
+            "inputs": [f"weekly_volume = {spec.weekly_volume:,} (the figure you entered)"],
+            "meaning": "the analyst workload this policy creates, a real cost booked separately",
+        },
+        {
+            "metric": "Projected net benefit per month",
+            "value": f"${abs(monthly_net):,.2f}" + (" saved" if monthly_net < 0 else " cost"),
+            "formula": "per_request_net x weekly_volume x 4.345 weeks",
+            "latex": r"B_{\text{month}} = b_{\text{req}} \times V_{\text{week}} \times 4.345",
+            "latex_substituted": (
+                rf"B_{{\text{{month}}}} = {per_request_net:.4f} \times {spec.weekly_volume:,} "
+                rf"\times 4.345 = {monthly_net}".replace(",", "{,}")
+            ),
+            "inputs": [
+                f"per_request_net = ${per_request_net:.4f} (base -$0.0009{extra_net_note})",
+            ],
+            "meaning": "cost-axis savings minus safety-check spend; negative means self-funding",
+        },
+    ]
+
+    estimate_method = {
+        "basis": (
+            "A closed-form model, not a simulation. Each figure is a monotone function of the five spec "
+            "inputs, anchored on the per-request economics measured on the live-model path (see Oversight "
+            "P&L) and on published provider list prices."
+        ),
+        "constants": {
+            "verify_pressure": _VERIFY_PRESSURE,
+            "lambda_latency_usd_per_ms": _LAMBDA,
+            "cost_of_a_miss": _PERF_COST,
+            "responsibility_multiplier": _RESP_MULT,
+            "weeks_per_month": 4.345,
+            "base_per_request_net_usd": -0.0009,
+        },
+        "steps": steps,
+        "caveats": [
+            "Volume is the figure you entered, not observed traffic.",
+            "Per-request net is anchored on this deployment's measured runs; your traffic mix will differ.",
+            "Human review cost is excluded from the net — it is shown as its own line so the automated "
+            "and the human economics never get blended.",
+            "Latency is the oversight layer's overhead only; it excludes the model call.",
+        ],
+    }
+    projection["estimate_method"] = estimate_method
 
     # --- rationale (explain every knob in business terms) ---
     rationale = [

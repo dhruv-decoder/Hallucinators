@@ -17,24 +17,34 @@ from __future__ import annotations
 import re
 
 from controlplane.cascade.detectors.base import Detector
+from controlplane.cascade.detectors.text import fold_typography
 from controlplane.core.types import Axis, RequestContext, Tier
 
-# Protected-attribute mentions (a person-group is being singled out).
+# Protected-attribute mentions (a person-group is being singled out). Age is included in the forms it
+# actually appears in when a model rationalises a hiring decision -- "the older candidate", "the 58-year-old"
+# -- because an age-coded judgement is the most common bias a support/HR copilot emits, and the bare word
+# "elderly" almost never appears in one.
 _PROTECTED = re.compile(
     r"\b(black|white|asian|hispanic|latino|latina|african|arab|jewish|muslim|christian|hindu|sikh|"
     r"buddhist|men|women|man|woman|male|female|transgender|nonbinary|gay|lesbian|queer|elderly|"
-    r"disabled|immigrant|refugee|caste|dalit|indigenous|foreigner)s?\b",
+    r"disabled|disability|immigrant|refugee|caste|dalit|indigenous|foreigner|"
+    r"older|younger|pregnant|maternity|paternity|veteran|accent|"
+    r"\d{2}[- ]year[- ]old|aged \d{2})s?\b",
     re.IGNORECASE,
 )
 
 # Loaded decision / stereotype language applied to a group.
 _LOADED = re.compile(
-    r"\b(less (qualified|capable|competent|suitable|intelligent|trustworthy|reliable)"
-    r"|more likely to (commit|default|fail|reoffend|drop out|be aggressive)"
+    r"\b(less (qualified|capable|competent|suitable|intelligent|trustworthy|reliable|adaptable|"
+    r"willing|flexible|energetic)"
+    r"|more likely to (commit|default|fail|reoffend|drop out|be aggressive|be set|leave|quit|retire)"
     r"|not (suitable|qualified|a good fit|reliable) (for|because|as)"
     r"|should (not )?be (hired|approved|denied|rejected|promoted|trusted)"
     r"|(those|these) people|all of (them|those)|by nature|inherently|naturally (better|worse)"
     r"|prone to|typical of|tend to be (lazy|violent|aggressive|dishonest)"
+    # Age-coded rationalisations: the euphemisms a model reaches for instead of saying "too old".
+    r"|set in (their|his|her) ways|too (old|young|slow) (for|to)|lacks? the energy"
+    r"|(won'?t|will not|can'?t) keep up|not a culture fit|culture fit"
     r"|(don'?t|do not) belong)\b",
     re.IGNORECASE,
 )
@@ -51,7 +61,9 @@ class BiasHeuristicDetector(Detector):
     informativeness = 0.6
 
     def assess(self, ctx: RequestContext) -> tuple[float, dict]:
-        text = ctx.response or ""
+        # Fold typography first: a model writes "27-year-old" with a non-breaking hyphen and "isn't" with a
+        # curly apostrophe, and an ASCII-only pattern would miss the very phrasing we are looking for.
+        text = fold_typography(ctx.response or "")
         protected = len(_PROTECTED.findall(text))
         loaded = len(_LOADED.findall(text))
         if protected == 0 or loaded == 0:

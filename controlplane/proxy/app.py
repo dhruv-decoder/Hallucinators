@@ -25,6 +25,7 @@ import asyncio
 import json
 import os
 import queue
+import re
 import threading
 import time
 import uuid
@@ -441,8 +442,17 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         body = await request.json()
         prompt = (body.get("prompt") or "").strip()
         context = (body.get("context") or "").strip() or None
+        # A real retriever returns several passages, not one blob. Splitting on blank lines reproduces that
+        # shape, which is what lets the pipeline notice that two retrieved passages disagree instead of
+        # treating a contradictory pair as a single authoritative source.
+        chunks = [c.strip() for c in re.split(r"\n\s*\n", context)] if context else []
+        chunks = [c for c in chunks if c]
         model = body.get("model") or None
         use_case = body.get("use_case") or "playground"
+        # The screening runner needs each repeat to be an independent call to the model. Without this the
+        # cache would replay the first answer and a "5 of 5 runs" claim would really be one run reported
+        # five times. Off by default, so ordinary traffic still gets the cache and its savings.
+        no_cache = bool(body.get("no_cache"))
         if not prompt:
             raise HTTPException(status_code=400, detail="prompt is required")
 
@@ -457,27 +467,30 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         def _generate():
             if GroqUpstream.available():
                 try:
-                    return GroqUpstream().generate(prompt, actual_model, use_case, context)
+                    return GroqUpstream().generate(prompt, actual_model, use_case, context, chunks)
                 except Exception:  # noqa: BLE001 - fall back to the offline upstream if the API call fails
                     pass
             g = upstream.generate(prompt, actual_model or "controlplane-sim", use_case=use_case)
-            if context:
-                g.retrieved_context = [context]
+            if chunks:
+                g.retrieved_context = list(chunks)
             return g
 
         # Real cache bypass: a repeated (prompt, model, context) reuses the stored generation and never calls
         # the upstream again -- the counters below prove it. Keyed on the *requested* model.
-        key = service.cache_key(prompt, model, context, use_case, service.policy_for(use_case)[1].id)
-        gen, cache_hit = await asyncio.to_thread(
-            service.generate_cached,
-            key,
-            _generate,
-            prompt=prompt,
-            model=model,
-            context=context,
-            use_case=use_case,
-            policy_id=service.policy_for(use_case)[1].id,
-        )
+        if no_cache:
+            gen, cache_hit = await asyncio.to_thread(_generate), False
+        else:
+            key = service.cache_key(prompt, model, context, use_case, service.policy_for(use_case)[1].id)
+            gen, cache_hit = await asyncio.to_thread(
+                service.generate_cached,
+                key,
+                _generate,
+                prompt=prompt,
+                model=model,
+                context=context,
+                use_case=use_case,
+                policy_id=service.policy_for(use_case)[1].id,
+            )
         if routed_to and not cache_hit:
             service.route_down_events += 1
         source = "cache" if cache_hit else ("groq" if getattr(gen, "token_source", "") == "measured" else "simulated")
@@ -537,7 +550,8 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
         produced = []
         for p in demo_prompts():
             res = await asyncio.to_thread(
-                service.generate_overseen, p["prompt"], p.get("model"), p.get("use_case")
+                service.generate_overseen, p["prompt"], p.get("model"), p.get("use_case"),
+                None, p.get("context"),
             )
             produced.append({"request_id": res.receipt.request_id, "action": res.applied.action.value})
         return {
@@ -677,6 +691,28 @@ def create_app(recorder_path: str | None = "recorder_log.jsonl", force_simulated
                 "n_failures": c.n_failures, "statement": c.statement(),
             })
         return {"axis": "performance", "source": "synthetic_demo", "certificates": certs}
+
+    @app.get("/v1/oversight/hard-cases")
+    def hard_cases() -> dict:
+        """Return the screening run that chose the product's demo cases.
+
+        Modern instruction-tuned models refuse obvious bait, so which failure families still break them is an
+        empirical question rather than an assumption. This artifact records the answer for this deployment:
+        candidate cases across published failure families, run repeatedly against the live model, with both
+        what the model did and what oversight did about it. Produced by ``make hard-cases``.
+        """
+        artifact = Path(os.environ.get("CONTROLPLANE_HARD_CASES_ARTIFACT", "artifacts/hard_cases.json"))
+        if not artifact.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="no hard-cases artifact; run make hard-cases to produce artifacts/hard_cases.json",
+            )
+        try:
+            data = json.loads(artifact.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 - surface a clear error to the UI
+            raise HTTPException(status_code=500, detail="hard-cases artifact unreadable") from exc
+        data["artifact"] = str(artifact)
+        return data
 
     @app.get("/v1/oversight/benchmark")
     def benchmark_eval() -> dict:

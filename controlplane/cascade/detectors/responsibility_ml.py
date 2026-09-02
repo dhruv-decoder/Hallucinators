@@ -72,6 +72,7 @@ class PresidioPiiDetector(Detector):
     est_cost_usd = 0.0  # local inference: compute, not dollars
     est_latency_ms = 30.0
     informativeness = 0.8
+    construct = "pii"
 
     def assess(self, ctx: RequestContext) -> tuple[float, dict]:
         text = ctx.response or ""

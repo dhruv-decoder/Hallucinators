@@ -20,7 +20,7 @@ from __future__ import annotations
 import enum
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class Axis(str, enum.Enum):
@@ -193,10 +193,34 @@ class PnlEntry(BaseModel):
     safety_spend_usd: float = 0.0
     token_source: str = "estimated"  # "measured" when tokens come from a real provider's usage metadata
 
+    # A plain @property is invisible to ``model_dump()``, so ``net_usd`` never reached the JSON the UI
+    # reads -- every per-decision net figure rendered as NaN and the cumulative benefit chart stayed empty.
+    # ``computed_field`` keeps it derived (there is still exactly one definition of the arithmetic) while
+    # making it part of the serialised receipt, which is also what the hash chain should be committing to.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def net_usd(self) -> float:
         """Safety spend minus cost saved. Negative = self-funding (we saved more than we spent)."""
         return self.safety_spend_usd - self.cost_saved_usd
+
+
+class Transcript(BaseModel):
+    """The text behind one decision, as it is safe to store in the audit log.
+
+    A receipt that records *only* scores and thresholds is unreadable: an auditor (or a reviewer working the
+    escalation queue) cannot judge whether "p_fail 0.91 -> block" was right without seeing what was asked and
+    what the model actually said. So every receipt carries the transcript -- but PII is redacted first, with
+    the same detector that decides the response is a leak, so the audit log never becomes a second copy of
+    the data we just blocked. ``redacted`` records what was removed (entity type -> count) as evidence.
+    """
+
+    prompt: str = ""
+    response: str = ""  # the model's candidate output, redacted
+    delivered: str = ""  # what the user actually received after the action was applied, redacted
+    retrieved_context: list[str] = Field(default_factory=list)
+    model: str = ""
+    redacted: dict[str, int] = Field(default_factory=dict)
+    truncated: bool = False
 
 
 class CascadeResult(BaseModel):
@@ -204,6 +228,10 @@ class CascadeResult(BaseModel):
 
     request_id: str
     use_case: str
+    prompt: str = ""
+    response: str = ""
+    retrieved_context: list[str] = Field(default_factory=list)
+    model: str = ""
     per_axis: dict[Axis, AxisOutcome] = Field(default_factory=dict)
     signals: list[Signal] = Field(default_factory=list)
     cost_opportunities: list[CostOpportunity] = Field(default_factory=list)
@@ -224,6 +252,7 @@ class VoIReceipt(BaseModel):
     request_id: str
     use_case: str
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    transcript: Transcript = Field(default_factory=Transcript)
     signals: list[Signal] = Field(default_factory=list)
     cost_opportunities: list[CostOpportunity] = Field(default_factory=list)
     per_axis: dict[Axis, AxisOutcome] = Field(default_factory=dict)

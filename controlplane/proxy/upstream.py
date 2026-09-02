@@ -170,7 +170,9 @@ class SimulatedUpstream:
 
     name = "simulated"
 
-    def generate(self, prompt: str, model: str, use_case: str | None = None) -> Generation:
+    def generate(
+        self, prompt: str, model: str, use_case: str | None = None, context: str | None = None
+    ) -> Generation:
         norm = _norm(prompt)
         scenario = self._match(norm)
         return Generation(
@@ -178,7 +180,8 @@ class SimulatedUpstream:
             model=scenario.model if model in ("controlplane-sim", "", None) else model,
             input_tokens=scenario.input_tokens,
             output_tokens=scenario.output_tokens,
-            retrieved_context=list(scenario.context),
+            # A caller-supplied source wins: it is the document this particular request actually retrieved.
+            retrieved_context=[context] if context else list(scenario.context),
             samples=list(scenario.samples),
             use_case=use_case or scenario.use_case,
             injected_failure=scenario.injected_failure,
@@ -204,9 +207,12 @@ class LiteLLMUpstream:
 
         self._litellm = litellm
 
-    def generate(self, prompt: str, model: str, use_case: str | None = None) -> Generation:
+    def generate(
+        self, prompt: str, model: str, use_case: str | None = None, context: str | None = None
+    ) -> Generation:
+        messages = ([{"role": "system", "content": "Answer using only this source:\n" + context}] if context else [])
         resp = self._litellm.completion(
-            model=model, messages=[{"role": "user", "content": prompt}]
+            model=model, messages=[*messages, {"role": "user", "content": prompt}]
         )
         choice = resp["choices"][0]["message"]["content"]
         usage = resp.get("usage", {}) or {}
@@ -215,6 +221,7 @@ class LiteLLMUpstream:
             model=model,
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
+            retrieved_context=[context] if context else [],
             use_case=use_case or "support_bot",
         )
 
@@ -260,8 +267,12 @@ class GroqUpstream:
         return cls._CHEAP  # unknown -> cheapest real model so the call still succeeds (and stays measured)
 
     def generate(
-        self, prompt: str, model: str | None = None, use_case: str | None = None, context: str | None = None
+        self, prompt: str, model: str | None = None, use_case: str | None = None, context: str | None = None,
+        chunks: list[str] | None = None,
     ) -> Generation:
+        """``chunks`` carries the retrieved passages separately when the caller has them; ``context`` is the
+        joined text the model is shown. Keeping both means the detectors can see that two passages disagree
+        even though the model was given one prompt."""
         import httpx
 
         model = self.to_groq_model(model or self.model)
@@ -272,7 +283,9 @@ class GroqUpstream:
         r = httpx.post(
             f"{self._BASE}/chat/completions",
             headers={"Authorization": f"Bearer {os.environ.get('GROQ_API_KEY', '')}"},
-            json={"model": model, "messages": messages, "max_tokens": 1024, "temperature": 0.2},
+            # Greedy decoding: the Playground is a demo surface, and a walkthrough that returns a different
+            # verdict on each run is worthless. Determinism costs nothing here.
+            json={"model": model, "messages": messages, "max_tokens": 1024, "temperature": 0.0},
             timeout=40.0,
         )
         r.raise_for_status()
@@ -285,7 +298,7 @@ class GroqUpstream:
             model=model,
             input_tokens=int(usage.get("prompt_tokens", len((context or "").split()) + len(prompt.split()))),
             output_tokens=int(usage.get("completion_tokens", len(text.split()))),
-            retrieved_context=[context] if context else [],
+            retrieved_context=list(chunks) if chunks else ([context] if context else []),
             use_case=use_case or "playground",
             token_source="measured" if has_usage else "estimated",
         )
@@ -307,14 +320,18 @@ class HybridDemoUpstream:
         self.real = real
         self.simulated = simulated or SimulatedUpstream()
 
-    def generate(self, prompt: str, model: str, use_case: str | None = None) -> Generation:
+    def generate(
+        self, prompt: str, model: str, use_case: str | None = None, context: str | None = None
+    ) -> Generation:
         scenario = self.simulated._match(_norm(prompt))
         if scenario.injected_failure is not None:
-            return self.simulated.generate(prompt, model, use_case)  # scripted risk -> reliable guardrail demo
-        try:  # benign or arbitrary prompt -> the real model, measured
-            return self.real.generate(prompt, model, use_case)
-        except Exception:  # noqa: BLE001 -- network/API hiccup falls back to the offline path
+            # Scripted risk -> reliable guardrail demo. Its own planted source is the point, so ignore any
+            # caller context here.
             return self.simulated.generate(prompt, model, use_case)
+        try:  # benign or arbitrary prompt -> the real model, measured
+            return self.real.generate(prompt, model, use_case, context)
+        except Exception:  # noqa: BLE001 -- network/API hiccup falls back to the offline path
+            return self.simulated.generate(prompt, model, use_case, context)
 
 
 def _has_provider_key() -> bool:

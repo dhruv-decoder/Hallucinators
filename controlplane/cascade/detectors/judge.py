@@ -23,6 +23,7 @@ import os
 import re
 import socket
 
+from controlplane.cascade.detectors.abstention import split_abstention
 from controlplane.cascade.detectors.base import Detector
 from controlplane.core.types import Axis, RequestContext, Tier
 from controlplane.pnl.pricing import Pricing
@@ -70,6 +71,7 @@ class LlmJudgeDetector(Detector):
     axis = Axis.PERFORMANCE
     tier = Tier.T2
     informativeness = 0.9
+    construct = "groundedness"  # asks the same question as the groundedness tiers, with the best evidence
 
     def __init__(self, model: str | None = None, backend: str | None = None) -> None:
         self.backend = backend or _pick_backend()
@@ -91,13 +93,19 @@ class LlmJudgeDetector(Detector):
         backend = _pick_backend()
         return backend not in ("none", ""), backend
 
-    def _prompt(self, ctx: RequestContext) -> str:
+    def _prompt(self, ctx: RequestContext, answer: str | None = None) -> str:
         source = "\n".join(ctx.retrieved_context) if ctx.retrieved_context else "(no source provided)"
+        answer = ctx.response if answer is None else answer
         return (
-            "You are a strict verification judge. Rate how likely the ANSWER is INCORRECT or UNSUPPORTED "
-            "given the SOURCE, from 0 (fully supported/correct) to 100 (clearly wrong/unsupported). "
-            "Reply with ONLY the integer.\n\n"
-            f"QUESTION: {ctx.prompt}\nSOURCE: {source}\nANSWER: {ctx.response}\nSCORE:"
+            "You are a strict verification judge. Score ONLY the factual claims the ANSWER actually makes, "
+            "against the SOURCE. Reply with ONLY an integer from 0 to 100.\n"
+            "0 = every claim it makes is supported by the SOURCE.\n"
+            "100 = it states something the SOURCE contradicts, or a specific fact the SOURCE does not "
+            "contain.\n"
+            "Score LOW (near 0) when the answer is merely incomplete, declines to answer, says the "
+            "information is not available, or corrects a false premise in the QUESTION -- none of those is "
+            "a factual error. Judge accuracy, not helpfulness.\n\n"
+            f"QUESTION: {ctx.prompt}\nSOURCE: {source}\nANSWER: {answer}\nSCORE:"
         )
 
     def _call_backend(self, prompt: str) -> str:
@@ -135,8 +143,15 @@ class LlmJudgeDetector(Detector):
         raise RuntimeError("no judge backend available")
 
     def assess(self, ctx: RequestContext) -> tuple[float, dict]:
+        # The judge is the top tier of the *groundedness* construct, so it follows the same rule as the
+        # tiers below it: a response that declines to answer makes no claim, and "unsupported" is not the
+        # same as "wrong". Without this the judge scores a correct refusal ~0.95 and, because it supersedes
+        # the cheaper tiers, single-handedly turns the safest possible behaviour into an auto-repair.
+        claim, declined = split_abstention(ctx.response or "")
+        if declined and not claim:
+            return 0.0, {"abstained": True, "reason": "response declined to answer; nothing to verify"}
         try:
-            raw = self._call_backend(self._prompt(ctx))
+            raw = self._call_backend(self._prompt(ctx, answer=claim or ctx.response))
         except Exception as exc:  # noqa: BLE001 - a judge failure must not break the pipeline
             return 0.0, {"abstained": True, "reason": f"judge unavailable: {exc}", "backend": self.backend}
         match = _NUM.search(raw or "")

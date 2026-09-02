@@ -12,7 +12,55 @@ from __future__ import annotations
 import hashlib
 import json
 
-from controlplane.core.types import CascadeResult, PnlEntry, VoIReceipt
+from controlplane.core.types import CascadeResult, PnlEntry, Transcript, VoIReceipt
+
+#: Cap on any single stored text field. Receipts are an audit trail, not a content archive; a very long
+#: response would bloat the chain and the SSE feed without making the decision any more reviewable.
+_MAX_CHARS = 1200
+
+
+def _safe(text: str) -> tuple[str, dict[str, int], bool]:
+    """Redact identifiers out of ``text`` and cap its length. Returns ``(text, redacted_counts, truncated)``."""
+    from controlplane.cascade.detectors.responsibility import redact_pii
+
+    clean, counts = redact_pii(text or "")
+    truncated = len(clean) > _MAX_CHARS
+    return (clean[:_MAX_CHARS] + "…" if truncated else clean), counts, truncated
+
+
+def build_transcript(result: CascadeResult, delivered: str | None = None) -> Transcript:
+    """Build the redacted, length-capped transcript that goes into the receipt.
+
+    Redaction runs on everything -- prompt, candidate response, delivered text, and retrieved context --
+    using the same patterns the PII detector scores with, so a leak the system just blocked is never
+    written into the audit log in the clear.
+    """
+    prompt, p_counts, p_trunc = _safe(result.prompt)
+    response, r_counts, r_trunc = _safe(result.response)
+    delivered_text, d_counts, d_trunc = _safe(delivered if delivered is not None else result.response)
+    context: list[str] = []
+    c_counts: dict[str, int] = {}
+    c_trunc = False
+    for chunk in result.retrieved_context[:4]:
+        text, counts, trunc = _safe(chunk)
+        context.append(text)
+        c_trunc = c_trunc or trunc
+        for key, value in counts.items():
+            c_counts[key] = c_counts.get(key, 0) + value
+
+    redacted: dict[str, int] = {}
+    for counts in (p_counts, r_counts, d_counts, c_counts):
+        for key, value in counts.items():
+            redacted[key] = redacted.get(key, 0) + value
+    return Transcript(
+        prompt=prompt,
+        response=response,
+        delivered=delivered_text,
+        retrieved_context=context,
+        model=result.model,
+        redacted=redacted,
+        truncated=p_trunc or r_trunc or d_trunc or c_trunc,
+    )
 
 
 def compute_hash(receipt: VoIReceipt) -> str:
@@ -36,6 +84,7 @@ def build_receipt(
     receipt = VoIReceipt(
         request_id=result.request_id,
         use_case=result.use_case,
+        transcript=build_transcript(result, delivered=repaired_output),
         signals=result.signals,
         cost_opportunities=result.cost_opportunities,
         per_axis=result.per_axis,

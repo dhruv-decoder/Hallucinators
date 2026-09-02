@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 
+from controlplane.cascade.detectors.abstention import split_abstention
 from controlplane.cascade.detectors.base import Detector
 from controlplane.core.types import Axis, RequestContext, Tier
 
@@ -83,6 +84,7 @@ class GroundednessHeuristicDetector(Detector):
     est_cost_usd = 0.0
     est_latency_ms = 2.0
     informativeness = 0.65
+    construct = "groundedness"  # the free lexical proxy; HHEM (T1) and the judge (T2) estimate the same thing
 
     def applicable(self, ctx: RequestContext) -> bool:
         return bool(ctx.retrieved_context)
@@ -90,7 +92,12 @@ class GroundednessHeuristicDetector(Detector):
     def assess(self, ctx: RequestContext) -> tuple[float, dict]:
         if not ctx.retrieved_context:
             return 0.0, {"abstained": True, "reason": "no retrieved context to check against"}
-        response_tokens = _tokens(ctx.response)
+        # A refusal asserts nothing, so there is nothing to ground. Score only the claim-bearing part;
+        # a pure "I don't have that information" abstains rather than scoring as maximally unsupported.
+        claim, declined = split_abstention(ctx.response or "")
+        if declined and not claim:
+            return 0.0, {"abstained": True, "reason": "response declined to answer; no claim to ground"}
+        response_tokens = _tokens(claim or ctx.response)
         if not response_tokens:
             return 0.0, {"abstained": True, "reason": "empty response"}
         context_tokens: set[str] = set()
@@ -99,7 +106,10 @@ class GroundednessHeuristicDetector(Detector):
         # Fraction of response content words that appear in the source. Low support -> high risk.
         supported = len(response_tokens & context_tokens) / len(response_tokens)
         score = 1.0 - supported
-        return score, {"support_fraction": round(supported, 4)}
+        detail = {"support_fraction": round(supported, 4)}
+        if declined:
+            detail["abstention_clauses_ignored"] = len(declined)
+        return score, detail
 
 
 class SelfConsistencyDetector(Detector):

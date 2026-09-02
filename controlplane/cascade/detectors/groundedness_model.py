@@ -15,7 +15,7 @@ and cached process-wide, and the engine falls back to the lexical heuristic when
 from __future__ import annotations
 
 import importlib.util
-from functools import lru_cache
+import threading
 
 from controlplane.cascade.detectors.abstention import split_abstention
 from controlplane.cascade.detectors.base import Detector
@@ -24,13 +24,33 @@ from controlplane.core.types import Axis, RequestContext, Tier
 _MODEL_ID = "vectara/hallucination_evaluation_model"
 
 
-@lru_cache(maxsize=1)
+#: The loaded cross-encoder, and the lock that guarantees exactly one thread ever builds it. The engine
+#: runs detectors on worker threads (``asyncio.to_thread``), so without this the first few concurrent
+#: requests all miss the cache and call ``from_pretrained`` at once. HHEM's vendored loading code
+#: materialises weights through accelerate's meta-device path, and interleaving two of those leaves one
+#: model with meta tensors that only fail later, at inference, with "Tensor.item() cannot be called on
+#: meta tensors". Double-checked locking makes the load happen once and the failure impossible.
+_MODEL = None
+_LOAD_LOCK = threading.Lock()
+
+
 def _get_model():
     """Load and cache the HHEM cross-encoder on the best available device (M4 GPU / CUDA / CPU).
 
     Validates the chosen device with a tiny prediction and falls back to CPU if an op is unsupported there
     (Metal/MPS does not implement every kernel), so enabling the GPU can never break the pipeline.
     """
+    global _MODEL
+    if _MODEL is not None:
+        return _MODEL
+    with _LOAD_LOCK:
+        if _MODEL is None:  # another thread may have finished while this one waited
+            _MODEL = _build_model()
+        return _MODEL
+
+
+def _build_model():
+    """Materialise the model. Only ever called with ``_LOAD_LOCK`` held."""
     try:
         from transformers import AutoModelForSequenceClassification
     except ImportError as exc:  # pragma: no cover - only without the [ml] extra

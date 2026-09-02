@@ -45,3 +45,6 @@ proposal/
 
 # stray downloads
 *.dmg
+
+# screen recordings (too large for git; keep them locally)
+*.mp4

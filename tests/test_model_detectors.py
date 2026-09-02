@@ -7,6 +7,8 @@ axis probability. Real models are never loaded -- the model call points are monk
 
 from __future__ import annotations
 
+import time
+
 from controlplane.cascade.detectors import groundedness_model
 from controlplane.cascade.detectors.factory import active_models, build_failure_detectors
 from controlplane.cascade.detectors.groundedness_model import HHEMGroundednessDetector
@@ -109,3 +111,39 @@ def test_groq_safety_parses_verdict(monkeypatch) -> None:
     monkeypatch.setattr(d, "_classify", lambda text: "SAFE")
     score, _ = d.assess(RequestContext(request_id="t", response="refunds within 30 days"))
     assert score == 0.0
+
+
+def test_concurrent_first_requests_load_the_hhem_model_exactly_once(monkeypatch):
+    """The engine runs detectors on worker threads, so several first requests can race on the loader.
+
+    HHEM materialises weights through accelerate's meta-device path; two interleaved loads leave one model
+    holding meta tensors that only fail later, at inference. The loader must therefore build exactly once
+    however many threads arrive together.
+    """
+    import threading
+
+    from controlplane.cascade.detectors import groundedness_model as gm
+
+    class _Stub:
+        pass
+
+    builds = []
+
+    def slow_build():
+        # Wide enough that every thread is inside _get_model before the first build returns.
+        builds.append(1)
+        time.sleep(0.05)
+        return _Stub()
+
+    monkeypatch.setattr(gm, "_MODEL", None)
+    monkeypatch.setattr(gm, "_build_model", slow_build)
+
+    seen: list[object] = []
+    threads = [threading.Thread(target=lambda: seen.append(gm._get_model())) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(builds) == 1, f"model was built {len(builds)} times under concurrency"
+    assert len({id(m) for m in seen}) == 1, "threads received different model instances"
